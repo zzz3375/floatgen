@@ -7,6 +7,8 @@ from os.path import dirname
 
 this_dir = dirname(__file__)
 
+scale = 1./1.5
+
 eps = 0.05 
 
 high = 2.5
@@ -23,6 +25,13 @@ if '-b' in sys.argv:
     out -= eps
 dae = stl[:-3] + 'dae'
 ive = stl[:-3] + 'ive'
+
+
+# apply scale
+pool *= scale
+out *= scale
+low *= scale
+high *= scale
 
 pool /= 2
 out /= 2

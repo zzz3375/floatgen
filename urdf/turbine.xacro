@@ -47,7 +47,7 @@
     <joint name="${name}_floating" type="fixed">
         <parent link="${name}/base_link"/>
         <child link="${name}/pole"/>
-        <origin xyz="-13.5 0 0"/>
+        <origin xyz="${-13.5/1.5} 0 0"/>
     </joint>
 </xacro:if>
 

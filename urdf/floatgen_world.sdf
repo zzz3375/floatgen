@@ -47,6 +47,7 @@
       <static>true</static>
       <link name="link">
         <visual name="water_plane">
+        <visibility_flags>0</visibility_flags>
           <geometry>
             <plane>
               <size>100 100</size>
