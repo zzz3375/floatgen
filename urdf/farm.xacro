@@ -13,6 +13,8 @@
 <xacro:arg name="ny" default="1"/>
 <xacro:arg name="scale" default="200"/>
 <xacro:arg name="velocity" default="-0.1"/>
+<xacro:arg name="nacelle_yaw" default="0"/>
+<xacro:arg name="blade_pitch" default="0"/>
 
 <xacro:include filename="turbine.xacro"/>
 
@@ -23,7 +25,7 @@
 <xacro:macro name="col" params="nx ny">
     
     <xacro:if value="${ny}">            
-    <xacro:turbine         
+    <xacro:turbine
         name="turbine_${nx}_${ny}"
         x="${x0 + (nx-1 + .5*(1-ny%2))*scale}"
         y="${y0 + (ny-1)*scale}"
@@ -31,7 +33,9 @@
         floating="$(arg floating)"
         height="$(arg height)"
         base_color="$(arg base_color)"
-        velocity="$(arg velocity)"/>
+        velocity="$(arg velocity)"
+        nacelle_yaw="$(arg nacelle_yaw)"
+        blade_pitch="$(arg blade_pitch)"/>
         
     <xacro:col nx="${nx}" ny="${ny-1}"/>        
     </xacro:if>
@@ -48,7 +52,7 @@
 <link name="world"/>
 
 <gazebo>
-    <plugin filename="libignition-gazebo-joint-state-publisher-system.so" name="ignition::gazebo::systems::JointStatePublisher"/>    
+    <plugin filename="libgz-sim-joint-state-publisher-system.so" name="gz::sim::systems::JointStatePublisher"/>
 </gazebo>
 
 <xacro:row nx="$(arg nx)" ny="$(arg ny)"/>

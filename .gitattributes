@@ -1,0 +1,1 @@
+meshes/nrel_5mw_blade*.dae filter=lfs diff=lfs merge=lfs -text

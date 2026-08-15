@@ -1,8 +1,8 @@
 <?xml version="1.0" ?>
 <robot name="turbine" xmlns:xacro="http://www.ros.org/wiki/xacro">
-    
-    
-<xacro:macro name="turbine" params="name x y yaw floating height base_color velocity">
+
+
+<xacro:macro name="turbine" params="name x y yaw floating height base_color velocity nacelle_yaw blade_pitch">
 
 <xacro:macro name="inertial_block">
     <inertial>
@@ -15,49 +15,49 @@
     <parent link="world"/>
     <child link="${name}/base_link"/>
     <origin xyz="${x} ${y} 0" rpy="0 0 ${yaw}"/>
-</joint>  
+</joint>
 
 <xacro:if value="${floating}">
-    
-    <link name="${name}/base_link"> 
+
+    <link name="${name}/base_link">
     <xacro:inertial_block/>
     <visual>
       <geometry>
         <mesh filename="package://floatgen/meshes/base_air.dae"/>
       </geometry>
-    </visual> 
+    </visual>
     <visual>
       <geometry>
         <mesh filename="package://floatgen/meshes/base_water.dae"/>
       </geometry>
-    </visual>         
-    
+    </visual>
+
     <collision>
       <geometry>
         <mesh filename="package://floatgen/meshes/base_air.dae"/>
       </geometry>
-    </collision> 
+    </collision>
     <collision>
       <geometry>
         <mesh filename="package://floatgen/meshes/base_water.dae"/>
       </geometry>
-    </collision>    
-    </link>    
-    
+    </collision>
+    </link>
+
     <joint name="${name}_floating" type="fixed">
         <parent link="${name}/base_link"/>
-        <child link="${name}/pole"/>
+        <child link="${name}/tower"/>
         <origin xyz="${-13.5/1.5} 0 0"/>
     </joint>
 </xacro:if>
 
 <xacro:unless value="${floating}">
-            
+
     <material name="base">
         <color rgba="${base_color} 1"/>
     </material>
-            
-    <link name="${name}/base_link"> 
+
+    <link name="${name}/base_link">
         <xacro:inertial_block/>
         <visual>
             <origin xyz="0 0 ${height/2}"/>
@@ -69,44 +69,134 @@
     </link>
     <joint name="${name}_base" type="fixed">
         <parent link="${name}/base_link"/>
-        <child link="${name}/pole"/>
+        <child link="${name}/tower"/>
         <origin xyz="0 0 ${height}"/>
-    </joint>     
+    </joint>
 </xacro:unless>
 
-<link name="${name}/pole"> 
+  <!-- NREL 5MW tower -->
+  <link name="${name}/tower">
     <xacro:inertial_block/>
     <visual>
+      <origin rpy="0 0 0" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://floatgen/meshes/pole.dae"  scale="1 1 1"/>
+        <mesh filename="package://floatgen/meshes/nrel_5mw_tower_fixed.dae"/>
       </geometry>
-    </visual> 
+    </visual>
   </link>
-  
-  <joint name="${name}" type="continuous">
-    <parent link="${name}/pole"/>
-    <child link="${name}/blades"/>
-    <axis xyz="1 0 0"/>
-    <origin xyz="0.71 0.0 16.864" rpy="${x+y} 0 0"/>
-  </joint>  
-    
-  <link name="${name}/blades">  
+
+  <!-- NREL 5MW nacelle -->
+  <link name="${name}/nacelle">
     <xacro:inertial_block/>
     <visual>
+      <origin rpy="3.1415926468775948 0 -1.5707976282241531" xyz="0.0 0.0 87.6"/>
       <geometry>
-        <mesh filename="package://floatgen/meshes/blades.dae"  scale="1 1 1"/>
+        <mesh filename="package://floatgen/meshes/nrel_5mw_nacelle.dae"/>
       </geometry>
-    </visual> 
+    </visual>
   </link>
-  
+
+  <!-- NREL 5MW hub -->
+  <link name="${name}/hub">
+    <xacro:inertial_block/>
+    <visual>
+      <origin rpy="1.4660765649629504 -1.2942998859347972e-06 -2.0936161231339145" xyz="77.9737 -44.9372 -15.097"/>
+      <geometry>
+        <mesh filename="package://floatgen/meshes/nrel_5mw_hub.dae"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <!-- NREL 5MW blade 1 -->
+  <link name="${name}/blade_1">
+    <xacro:inertial_block/>
+    <visual>
+      <origin rpy="-0.10472199959761166 -1.0464185719358736 -1.5707937416822637" xyz="-16.894 -77.9036 -48.4857"/>
+      <geometry>
+        <mesh filename="package://floatgen/meshes/nrel_5mw_blade001.dae"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <!-- NREL 5MW blade 2 -->
+  <link name="${name}/blade_2">
+    <xacro:inertial_block/>
+    <visual>
+      <origin rpy="-0.1047175160004025 1.0479765304544253 -1.5707937346970047" xyz="-16.894 77.9737 -48.3643"/>
+      <geometry>
+        <mesh filename="package://floatgen/meshes/nrel_5mw_blade.dae"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <!-- NREL 5MW blade 3 -->
+  <link name="${name}/blade_3">
+    <xacro:inertial_block/>
+    <visual>
+      <origin rpy="3.0368728927660795 -0.0007789792592705453 1.5707950324946187" xyz="-16.894 -0.0700922 86.5686"/>
+      <geometry>
+        <mesh filename="package://floatgen/meshes/nrel_5mw_blade002.dae"/>
+      </geometry>
+    </visual>
+  </link>
+
+  <!-- yaw: tower -> nacelle, locked at preset angle -->
+  <joint name="${name}_yaw" type="revolute">
+    <parent link="${name}/tower"/>
+    <child link="${name}/nacelle"/>
+    <origin rpy="-3.1415926535897634 6.712198591306192e-09 -1.5707976282241531" xyz="0.0 0.0 87.6"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="500000" lower="${nacelle_yaw}" upper="${nacelle_yaw}" velocity="1.0"/>
+    <dynamics damping="0.1" friction="0.1"/>
+  </joint>
+
+  <!-- rotor: nacelle -> hub, continuous, animated -->
+  <joint name="${name}_rotor" type="continuous">
+    <parent link="${name}/nacelle"/>
+    <child link="${name}/hub"/>
+    <origin rpy="-1.7782601607629762 -1.038547933947844 1.7502204971959556" xyz="-5.60714 0.0 -3.48086"/>
+    <axis xyz="0 0 1"/>
+    <dynamics damping="0.1" friction="0.1"/>
+  </joint>
+
+  <!-- pitch: hub -> blade_1, locked at preset angle -->
+  <joint name="${name}_pitch_1" type="revolute">
+    <parent link="${name}/hub"/>
+    <child link="${name}/blade_1"/>
+    <origin rpy="-1.5707963267948966 -1.5707963267948881 2.0883275857636687" xyz="-2.96798 -1.71357 1.79702"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="100000" lower="${blade_pitch}" upper="${blade_pitch}" velocity="0.2"/>
+    <dynamics damping="0.1" friction="0.1"/>
+  </joint>
+
+  <!-- pitch: hub -> blade_2, locked at preset angle -->
+  <joint name="${name}_pitch_2" type="revolute">
+    <parent link="${name}/hub"/>
+    <child link="${name}/blade_2"/>
+    <origin rpy="-1.5707963267948966 -1.5707963267948906 -0.036347621019020664" xyz="0.0 3.42713 1.79702"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="100000" lower="${blade_pitch}" upper="${blade_pitch}" velocity="0.2"/>
+    <dynamics damping="0.1" friction="0.1"/>
+  </joint>
+
+  <!-- pitch: hub -> blade_3, locked at preset angle -->
+  <joint name="${name}_pitch_3" type="revolute">
+    <parent link="${name}/hub"/>
+    <child link="${name}/blade_3"/>
+    <origin rpy="2.6179938779915037 -1.5707963267948957 0" xyz="2.96798 -1.71357 1.79702"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="100000" lower="${blade_pitch}" upper="${blade_pitch}" velocity="0.2"/>
+    <dynamics damping="0.1" friction="0.1"/>
+  </joint>
+
   <gazebo>
     <plugin
-        filename="libignition-gazebo-joint-controller-system.so"
-        name="ignition::gazebo::systems::JointController">
-        <joint_name>${name}</joint_name>
+        filename="libgz-sim-joint-controller-system.so"
+        name="gz::sim::systems::JointController">
+        <joint_name>${name}_rotor</joint_name>
         <initial_velocity>${velocity}</initial_velocity>
       </plugin>
   </gazebo>
-  
+
 </xacro:macro>
 </robot>
