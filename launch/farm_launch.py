@@ -10,7 +10,7 @@ sl.declare_arg('x', default_value = 0., description = 'X-position of first turbi
 sl.declare_arg('y', default_value = 0., description = 'Y-position of first turbine')
 sl.declare_arg('yaw', default_value = 0., description = 'Yaw of turbines')
 sl.declare_arg('scale', default_value = 200., description = 'Distances of turbines')
-sl.declare_arg('velocity', default_value = -2., description = 'Velocity of turbines')
+sl.declare_arg('velocity', default_value = -2., description = 'Velocity of turbines (rad/s)')
 sl.declare_arg('nacelle_yaw', default_value = 0., description = 'Preset yaw angle of the nacelle (radians)')
 sl.declare_arg('blade_pitch', default_value = 0., description = 'Preset pitch angle of the blades (radians)')
 
