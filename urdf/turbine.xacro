@@ -2,7 +2,7 @@
 <robot name="turbine" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
 
-<xacro:macro name="turbine" params="name x y yaw floating height base_color velocity nacelle_yaw blade_pitch">
+<xacro:macro name="turbine" params="name x y yaw velocity nacelle_yaw blade_pitch hub_position">
 
 <xacro:macro name="inertial_block">
     <inertial>
@@ -13,66 +13,9 @@
 
 <joint name="${name}_world" type="fixed">
     <parent link="world"/>
-    <child link="${name}/base_link"/>
+    <child link="${name}/tower"/>
     <origin xyz="${x} ${y} 0" rpy="0 0 ${yaw}"/>
 </joint>
-
-<xacro:if value="${floating}">
-
-    <link name="${name}/base_link">
-    <xacro:inertial_block/>
-    <visual>
-      <geometry>
-        <mesh filename="package://floatgen/meshes/base_air.dae"/>
-      </geometry>
-    </visual>
-    <visual>
-      <geometry>
-        <mesh filename="package://floatgen/meshes/base_water.dae"/>
-      </geometry>
-    </visual>
-
-    <collision>
-      <geometry>
-        <mesh filename="package://floatgen/meshes/base_air.dae"/>
-      </geometry>
-    </collision>
-    <collision>
-      <geometry>
-        <mesh filename="package://floatgen/meshes/base_water.dae"/>
-      </geometry>
-    </collision>
-    </link>
-
-    <joint name="${name}_floating" type="fixed">
-        <parent link="${name}/base_link"/>
-        <child link="${name}/tower"/>
-        <origin xyz="${-13.5/1.5} 0 0"/>
-    </joint>
-</xacro:if>
-
-<xacro:unless value="${floating}">
-
-    <material name="base">
-        <color rgba="${base_color} 1"/>
-    </material>
-
-    <link name="${name}/base_link">
-        <xacro:inertial_block/>
-        <visual>
-            <origin xyz="0 0 ${height/2}"/>
-        <geometry>
-            <cylinder radius=".45" length="${height}"/>
-        </geometry>
-        <material name="base"/>
-        </visual>
-    </link>
-    <joint name="${name}_base" type="fixed">
-        <parent link="${name}/base_link"/>
-        <child link="${name}/tower"/>
-        <origin xyz="0 0 ${height}"/>
-    </joint>
-</xacro:unless>
 
   <!-- NREL 5MW tower -->
   <link name="${name}/tower">
@@ -150,7 +93,20 @@
     <dynamics damping="0.1" friction="0.1"/>
   </joint>
 
-  <!-- rotor: nacelle -> hub, continuous, animated -->
+  <!-- rotor: nacelle -> hub.
+       velocity != 0: continuous joint animated by the joint controller.
+       velocity == 0: locked at the preset hub_position. -->
+  <xacro:if value="${float(velocity) == 0.0}">
+  <joint name="${name}_rotor" type="revolute">
+    <parent link="${name}/nacelle"/>
+    <child link="${name}/hub"/>
+    <origin rpy="-1.7782601607629762 -1.038547933947844 1.7502204971959556" xyz="-5.60714 0.0 -3.48086"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="500000" lower="${hub_position}" upper="${hub_position}" velocity="1.0"/>
+    <dynamics damping="0.1" friction="0.1"/>
+  </joint>
+  </xacro:if>
+  <xacro:unless value="${float(velocity) == 0.0}">
   <joint name="${name}_rotor" type="continuous">
     <parent link="${name}/nacelle"/>
     <child link="${name}/hub"/>
@@ -158,6 +114,7 @@
     <axis xyz="0 0 1"/>
     <dynamics damping="0.1" friction="0.1"/>
   </joint>
+  </xacro:unless>
 
   <!-- pitch: hub -> blade_1, locked at preset angle -->
   <joint name="${name}_pitch_1" type="revolute">
@@ -189,6 +146,7 @@
     <dynamics damping="0.1" friction="0.1"/>
   </joint>
 
+  <xacro:unless value="${float(velocity) == 0.0}">
   <gazebo>
     <plugin
         filename="libgz-sim-joint-controller-system.so"
@@ -197,6 +155,7 @@
         <initial_velocity>${velocity}</initial_velocity>
       </plugin>
   </gazebo>
+  </xacro:unless>
 
 </xacro:macro>
 </robot>

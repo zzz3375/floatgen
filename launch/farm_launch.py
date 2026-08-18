@@ -11,6 +11,7 @@ sl.declare_arg('y', default_value = 0., description = 'Y-position of first turbi
 sl.declare_arg('yaw', default_value = 0., description = 'Yaw of turbines')
 sl.declare_arg('scale', default_value = 200., description = 'Distances of turbines')
 sl.declare_arg('velocity', default_value = -2., description = 'Velocity of turbines (rad/s)')
+sl.declare_arg('hub_position', default_value = 0., description = 'Preset position of the rotor hub (rad), applied when velocity is zero')
 sl.declare_arg('nacelle_yaw', default_value = 0., description = 'Preset yaw angle of the nacelle (radians)')
 sl.declare_arg('blade_pitch', default_value = 0., description = 'Preset pitch angle of the blades (radians)')
 
@@ -33,11 +34,11 @@ def launch_setup():
         with sl.group(ns=ns):
             # Generate URDF from xacro (shared between RSP and Gazebo spawn)
             urdf = sl.robot_description('floatgen', 'farm.xacro',
-                                        xacro_args=sl.arg_map('x', 'y', 'yaw', 'nx', 'ny', 'scale', 'velocity', 'nacelle_yaw', 'blade_pitch'))
+                                        xacro_args=sl.arg_map('x', 'y', 'yaw', 'nx', 'ny', 'scale', 'velocity', 'hub_position', 'nacelle_yaw', 'blade_pitch'))
 
             # run RSP with given parameters
             sl.robot_state_publisher('floatgen', 'farm.xacro',
-                                            xacro_args=sl.arg_map('x', 'y', 'yaw', 'nx', 'ny', 'scale', 'velocity', 'nacelle_yaw', 'blade_pitch'))
+                                            xacro_args=sl.arg_map('x', 'y', 'yaw', 'nx', 'ny', 'scale', 'velocity', 'hub_position', 'nacelle_yaw', 'blade_pitch'))
 
             # spawn in Gazebo via -param (robot_state_publisher does NOT publish /robot_description topic in Humble)
             sl.node('ros_gz_sim', 'create',

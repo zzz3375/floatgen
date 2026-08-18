@@ -1,10 +1,6 @@
 <?xml version="1.0" ?>
 <robot name="farm" xmlns:xacro="http://www.ros.org/wiki/xacro">
     
-<xacro:arg name="floating" default="true"/>
-<xacro:arg name="height" default="0"/>
-<xacro:arg name="base_color" default="1 1 1"/>
-
 <xacro:arg name="x" default="0"/>
 <xacro:arg name="y" default="0"/>
 <xacro:arg name="yaw" default="0"/>
@@ -15,6 +11,7 @@
 <xacro:arg name="velocity" default="-0.1"/>
 <xacro:arg name="nacelle_yaw" default="0"/>
 <xacro:arg name="blade_pitch" default="0"/>
+<xacro:arg name="hub_position" default="0"/>
 
 <xacro:include filename="turbine.xacro"/>
 
@@ -30,12 +27,10 @@
         x="${x0 + (nx-1 + .5*(1-ny%2))*scale}"
         y="${y0 + (ny-1)*scale}"
         yaw="$(arg yaw)"
-        floating="$(arg floating)"
-        height="$(arg height)"
-        base_color="$(arg base_color)"
         velocity="$(arg velocity)"
         nacelle_yaw="$(arg nacelle_yaw)"
-        blade_pitch="$(arg blade_pitch)"/>
+        blade_pitch="$(arg blade_pitch)"
+        hub_position="$(arg hub_position)"/>
         
     <xacro:col nx="${nx}" ny="${ny-1}"/>        
     </xacro:if>
