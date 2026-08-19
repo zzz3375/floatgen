@@ -1,0 +1,48 @@
+# Wind-farm inspection configuration.
+# Single source of truth for the gz world layout (gz/worlds/wind_farm.sdf)
+# and the ROS2 planner (scripts/wind_farm_planner.py).
+#
+# Coordinate conventions:
+#   - turbine positions are ENU metres in the gz world frame (tower base),
+#     matching the <include> poses in gz/worlds/wind_farm.sdf
+#     (farm.xacro grid formula with x0=0, y0=0, scale=200, nx=ny=2).
+#   - the planner converts them to the PX4 local NED frame (north=+x, east=+y,
+#     down=-z) with the home position (PX4_GZ_MODEL_POSE) as origin.
+world: wind_farm
+
+# PX4_GZ_MODEL_POSE used to spawn the drone (ENU metres in the gz world).
+# Home position for the PX4 local NED frame; must match the bringup launch.
+drone_home:
+  x: -80.0
+  y: -25.0
+  z: 0.5
+
+gps_origin:
+  latitude: 47.397971057728974   # matches <spherical_coordinates> in the world
+  longitude: 8.546163739800146
+  elevation: 0.0
+
+turbines:
+  - name: wind_turbine_1_1
+    x: 0.0
+    y: 0.0
+  - name: wind_turbine_2_1
+    x: 200.0
+    y: 0.0
+  - name: wind_turbine_1_2
+    x: 100.0
+    y: 200.0
+  - name: wind_turbine_2_2
+    x: 300.0
+    y: 200.0
+
+inspection:
+  # Orbit the first turbine (wind_turbine_1_1 at the farm origin).
+  # Rotor radius is ~63 m (blades reach x in [-56, +56], rotor plane at y~7),
+  # so 85 m clears the whole turbine with margin.
+  orbit_radius: 85.0
+  orbit_altitude: 95.0        # m above ground, near hub height (~90 m)
+  num_waypoints: 12
+  waypoint_tolerance: 3.0     # m, horizontal acceptance radius
+  waypoint_timeout: 60.0      # s, max time per waypoint
+  yaw_towards_turbine: true

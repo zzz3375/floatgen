@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  FastDDS profile for WSL2: force UDPv4 on the loopback interface only.
+  WSL2's default NAT interfaces (eth1/eth2) drop multicast discovery, and
+  eth0 is DOWN, so FastDDS's default interface selection breaks discovery.
+  Point FASTRTPS_DEFAULT_PROFILES_FILE (or FASTDDS_DEFAULT_PROFILES_FILE)
+  at this file for every DDS participant (ROS2 nodes and MicroXRCEAgent).
+-->
+<profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+  <transport_descriptors>
+    <transport_descriptor>
+      <transport_id>LoopbackUDP</transport_id>
+      <type>UDPv4</type>
+      <interfaceWhiteList>
+        <address>127.0.0.1</address>
+      </interfaceWhiteList>
+    </transport_descriptor>
+  </transport_descriptors>
+  <participant profile_name="loopback_only" is_default_profile="true">
+    <rtps>
+      <userTransports>
+        <transport_id>LoopbackUDP</transport_id>
+      </userTransports>
+      <useBuiltinTransports>false</useBuiltinTransports>
+    </rtps>
+  </participant>
+</profiles>

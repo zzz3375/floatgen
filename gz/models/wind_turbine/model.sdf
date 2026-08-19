@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Static NREL-5MW wind turbine for the PX4 wind-farm inspection world.
+  All meshes are authored in the assembled turbine frame (tower base at model
+  origin, nacelle at z~88-94, rotor in the XZ plane): hence every visual and
+  collision below uses an identity pose relative to the model frame.
+-->
+<sdf version="1.9">
+  <model name="wind_turbine">
+    <static>true</static>
+    <self_collide>false</self_collide>
+    <link name="turbine">
+      <!-- tower -->
+      <visual name="tower_visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>model://wind_turbine/meshes/nrel_5mw_tower_fixed.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <collision name="tower_collision">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>model://wind_turbine/meshes/nrel_5mw_tower_fixed.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <!-- nacelle -->
+      <visual name="nacelle_visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>model://wind_turbine/meshes/nrel_5mw_nacelle.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <collision name="nacelle_collision">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>model://wind_turbine/meshes/nrel_5mw_nacelle.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <!-- hub -->
+      <visual name="hub_visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>model://wind_turbine/meshes/nrel_5mw_hub.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <collision name="hub_collision">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>model://wind_turbine/meshes/nrel_5mw_hub.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <!-- blade 1 (blade001: up-right) -->
+      <visual name="blade1_visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>model://wind_turbine/meshes/nrel_5mw_blade001.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <collision name="blade1_collision">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>model://wind_turbine/meshes/nrel_5mw_blade001.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <!-- blade 2 (blade: up-left) -->
+      <visual name="blade2_visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>model://wind_turbine/meshes/nrel_5mw_blade.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <collision name="blade2_collision">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>model://wind_turbine/meshes/nrel_5mw_blade.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <!-- blade 3 (blade002: down) -->
+      <visual name="blade3_visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>model://wind_turbine/meshes/nrel_5mw_blade002.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <collision name="blade3_collision">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>model://wind_turbine/meshes/nrel_5mw_blade002.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+    </link>
+  </model>
+</sdf>

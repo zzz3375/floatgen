@@ -7,7 +7,9 @@
   <maintainer email="olivier.kermorgant@ec-nantes.fr">Olivier Kermorgant</maintainer>
 
   <license>MIT</license>
-  
+
+  <exec_depend>px4_msgs</exec_depend>
+
   <export>
     <build_type>ament_cmake</build_type>
     <gazebo_ros gazebo_media_path="${prefix}"/>

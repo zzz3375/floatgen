@@ -51,69 +51,58 @@
 ---
 
 ## Phase 0 — 决策与前置
-- [ ] 0.1 确认机体：默认 `x500`（四旋翼）。如需相机/深度选 `x500_depth`/`x500_vision`（见 `Tools/simulation/gz/models/`）。
-- [ ] 0.2 确认巡检形态：绕单机环绕 / 沿整排风机走廊 / 对叶片近距离拍照航线。
-- [ ] 0.3 选定**集成方案**（见 Phase 3，二者选一，推荐 A）：
-  - **A：软链进 PX4 目录**（PX4 原生、最稳；对 PX4 仅加软链，不改源码）。
-  - **B：standalone**（world 放 floatgen，手动起 gz，PX4 用 `PX4_GZ_STANDALONE`；不碰 PX4 但步骤多）。
-- [ ] 0.4 定 GPS 原点（`spherical_coordinates` 的 lat/lon）与风机布局参数（`x,y,scale,nx,ny`），并记录成配置文件（Phase 4 的规划器要读同一份）。
+- [x] 0.1 确认机体：默认 `x500`（四旋翼）。
+- [x] 0.2 确认巡检形态：绕单机环绕（12 waypoint，半径 85m，高度 95m）。
+- [x] 0.3 选定集成方案：**方案 A（软链进 PX4 目录）**。
+- [x] 0.4 定 GPS 原点（沿用 PX4 default 坐标）与风机布局（2×2、scale 200），记录于 `config/wind_farm.yaml`。
 
 ## Phase 1 — 风机的 gz 模型化（解决 G2）
-- [ ] 1.1 建目录 `src/floatgen/gz/models/wind_turbine/`，含 `model.config`、`model.sdf`、`meshes/`。
-- [ ] 1.2 把现有 NREL-5MW 几何（tower/nacelle/hub/blade_1..3）转成**静态** gz 模型：`<static>true</static>`，visual+collision 用 `model://wind_turbine/meshes/*.dae`。
-      - 可直接参考/复用 `urdf/turbine.xacro` 中的 mesh 位姿（各 link 的 `origin rpy/xyz`）。
-      - 也可用 `xacro`+脚本把 URDF 转 SDF，但手写静态模型更可控。
-- [ ] 1.3 把 `.dae`（及所需贴图）**复制或软链**进 `meshes/`（`base.py`/`.ive`/`.osg` 不需要）。
-- [ ] 1.4（可选）叶片旋转动画：给 rotor joint 加 `gz::sim::systems::JointController`（参考 `turbine.xacro` 末尾写法）；注意与无人机的碰撞语义，巡检场景可先关掉。
-- [ ] 1.5（可选）给叶片 `enable_wind=true`，配合 world 的 `<wind>`（见 `worlds/windy.sdf`）。
-- [ ] 1.6 验证：`GZ_SIM_RESOURCE_PATH=<...>/gz/models gz sim -v 4 -r`（空 world + 手动插入 wind_turbine），确认网格加载、无 missing resource。
+- [x] 1.1 建目录 `src/floatgen/gz/models/wind_turbine/`，含 `model.config`、`model.sdf`、`meshes/`。
+- [x] 1.2 NREL-5MW 几何转成**静态** gz 模型：`<static>true</static>`，visual+collision 用 `model://wind_turbine/meshes/*.dae`。
+      - 注意：各 mesh 本身即“装配后的全局坐标系”（塔底为原点），故 SDF 中所有 visual/collision 用 identity pose；URDF 里 joint+visual 偏移相互抵消等价于该结果。
+- [x] 1.3 `.dae` 复制进 `meshes/`。
+- [ ] 1.4（可选）叶片旋转动画 —— 巡检场景保持静态，未做。
+- [ ] 1.5（可选）叶片 `enable_wind` —— 未做。
+- [x] 1.6 验证：headless 渲染截图确认网格加载、装配正确、无报错。
 
 ## Phase 2 — 风机农场 world SDF（解决 G1）
-- [ ] 2.1 以 `~/PX4-Autopilot/Tools/simulation/gz/worlds/default.sdf` 为模板新建 `wind_farm.sdf`，**保留**其全部系统插件：
-      `Physics/UserCommands/SceneBroadcaster/Contact/Imu/AirPressure/ApplyLinkWrench/NavSat/Sensors`，以及 `gravity`、`magnetic_field`、`atmosphere`、`gui`。
-- [ ] 2.2 加 `<spherical_coordinates>`（WGS84/ENU + lat/lon/elevation）——**GPS 原点，必需**。
-- [ ] 2.3 用 `<include><uri>model://wind_turbine</uri><pose>...</pose></include>` 按 floatgen 布局（`x,y,scale,nx,ny`）摆放多台风机；地面用 `ground_plane`（`enable_wind` 按需）。
-- [ ] 2.4（可选）加 `<wind>`（参考 `worlds/windy.sdf`），模拟风场对无人机的扰动。
-- [ ] 2.5 存为 `src/floatgen/gz/worlds/wind_farm.sdf`。
-- [ ] 2.6 验证：`gz sim -r wind_farm.sdf`（配好 `GZ_SIM_RESOURCE_PATH`）能独立跑，风机可见、无报错。
+- [x] 2.1 以 PX4 `default.sdf` 为模板新建 `wind_farm.sdf`，**保留**全部系统插件与 `gravity`、`magnetic_field`、`atmosphere`、`gui`。
+- [x] 2.2 加 `<spherical_coordinates>`（沿用 PX4 default 的 lat/lon/elevation）。
+- [x] 2.3 4 台风机按 farm.xacro 布局 include：(0,0)、(200,0)、(100,200)、(300,200)。
+- [x] 2.4 加 `<wind>`（3 m/s +x）。
+- [x] 2.5 存为 `src/floatgen/gz/worlds/wind_farm.sdf`。
+- [x] 2.6 验证：headless 独立运行，风机可见、无报错。
 
-## Phase 3 — PX4 集成（解决 G4，二选一）
-### 方案 A（推荐）：软链进 PX4 目录
-- [ ] 3A.1 `ln -s ~/ros2_ws/src/floatgen/gz/worlds/wind_farm.sdf ~/PX4-Autopilot/Tools/simulation/gz/worlds/wind_farm.sdf`
-- [ ] 3A.2 `ln -s ~/ros2_ws/src/floatgen/gz/models/wind_turbine ~/PX4-Autopilot/Tools/simulation/gz/models/wind_turbine`
-- [ ] 3A.3 运行（**免改 CMakeLists**，用 env 覆盖 world）：
-      ```
-      cd ~/PX4-Autopilot
-      PX4_GZ_WORLD=wind_farm PX4_GZ_MODEL_POSE="<x>,<y>,0,0,0,0" make px4_sitl gz_x500
-      ```
-- [ ] 3A.4（可选，想要专属 target）把 `wind_farm` 加进 `src/modules/simulation/gz_bridge/CMakeLists.txt` 的 `gz_worlds`，重配后即可 `make px4_sitl gz_x500_wind_farm`。
-### 方案 B：standalone（不碰 PX4 目录）
-- [ ] 3B.1 `export GZ_SIM_RESOURCE_PATH=<floatgen>/gz/models:<floatgen>/gz/worlds:~/PX4-Autopilot/Tools/simulation/gz/models:~/PX4-Autopilot/Tools/simulation/gz/worlds`
-- [ ] 3B.2 手动起 world：`gz sim -r wind_farm.sdf`（可另开 `-g` GUI）。
-- [ ] 3B.3 起 PX4 并接管已运行 world：
-      ```
-      cd ~/PX4-Autopilot
-      PX4_GZ_STANDALONE=1 PX4_GZ_WORLD=wind_farm PX4_SIM_MODEL=gz_x500 \
-        PX4_GZ_MODEL_POSE="<x>,<y>,0,0,0,0" make px4_sitl gz_x500
-      ```
-- [ ] 3.x 共同验证：x500 出现在风机旁；`commander takeoff` / MAVLink offboard 能解锁起飞。
+## Phase 3 — PX4 集成（解决 G4，方案 A）
+- [x] 3A.1 软链 world 进 PX4 目录。
+- [x] 3A.2 软链 wind_turbine model 进 PX4 目录。
+- [x] 3A.3 `PX4_GZ_WORLD=wind_farm PX4_GZ_MODEL_POSE="-80,-25,0.5,0,0,0" make px4_sitl gz_x500`：world 自动加载、x500 出生在指定位置、PX4 完整启动。
+- [ ] 3A.4（可选）专属 target —— 未做（env 覆盖已够用，保持 PX4 上游干净）。
+- [x] 3.x 验证：x500 出现在风机旁（4 台风机+无人机同 world），offboard 起飞/巡航由 Phase 4 端到端验证。
 
 ## Phase 4 — ROS2 通信 + 路径规划（解决 G3）
-- [ ] 4.1 clone 进工作区：`px4_msgs`、`px4_ros_com`（Humble 分支）到 `~/ros2_ws/src`，`colcon build`。
-- [ ] 4.2 起 DDS 桥：`MicroXRCEAgent udp4 -p 8888 -v`（与 PX4 SITL 默认对齐）。
-- [ ] 4.3 确认话题打通：`ros2 topic list | grep fmu`（如 `/fmu/out/vehicle_status`）。
-- [ ] 4.4 规划节点：读取 Phase 0.4 的风机坐标配置，生成巡检 waypoint（环绕单机 / 走廊），通过 `px4_ros_com` 的 offboard 接口（`TrajectorySetpoint`/`VehicleCommand`）下发。
-- [ ] 4.5（可选）避障与感知：换 `x500_depth`/`x500_vision`，接深度/相机话题；或引入现成避障栈。
-- [ ] 4.6（可选）用 QGroundControl 跑 mission 与 ROS2 规划二选一/结合。
-- [ ] 4.7 端到端验证：起飞 → 按路径绕风机 → 返航降落；记录 RTF/轨迹。
+- [x] 4.1 clone 进工作区：`px4_msgs`（**v1.15.4 tag**，main 与 PX4 1.15.4 消息不兼容）、`px4_ros_com`（main）到 `~/ros2_ws/src`，`colcon build`。
+- [x] 4.2 起 DDS 桥：`MicroXRCEAgent udp4 -p 8888`（v2.4.3，与 PX4 SITL 对齐）。
+- [x] 4.3 确认话题打通：`/fmu/out/vehicle_status` 等 43 个 fmu 话题可见（**须用 `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`**，见下“异常”）。
+- [x] 4.4 规划节点：`scripts/wind_farm_planner.py`（rclpy + px4_msgs 话题：OffboardControlMode/TrajectorySetpoint/VehicleCommand，直接等价于 px4_ros_com 的 offboard 接口），读取 `config/wind_farm.yaml` 生成环绕 waypoint。
+- [ ] 4.5（可选）避障与感知 —— 未做。
+- [ ] 4.6（可选）QGroundControl —— 未做。
+- [x] 4.7 端到端验证：解锁 → offboard → 12 waypoint 绕风机 → RTL 返航 → 降落 → 解锁（多次完整跑通）。
 
 ## Phase 5 — 打包与一键启动
-- [ ] 5.1 `floatgen/CMakeLists.txt` `install(DIRECTORY gz ...)`，让 `colcon build` 带上 world+models。
-- [ ] 5.2 写 bringup：一条脚本起 `world + px4_sitl + MicroXRCEAgent + planner`（可用 `ros2 launch`）。
-- [ ] 5.3 更新 `README`：目录结构、方案 A/B 命令、坐标系/GPS 原点说明。
-- [ ] 5.4（可选）截图/录屏，归档到 `docs/`。
+- [x] 5.1 `floatgen/CMakeLists.txt` `install(DIRECTORY gz config ...)` + planner 脚本安装，`colcon build` 验证。
+- [x] 5.2 bringup：`scripts/wind_farm_bringup.sh`（agent + px4_sitl + planner 一键，HEADLESS 可选；正常路径端到端跑通并自动清理进程树）。
+- [x] 5.3 更新 `README`：目录结构、命令、坐标系/GPS 原点说明。
+- [ ] 5.4（可选）截图/录屏 —— 未做（headless 环境，改为日志/位姿验证）。
 
 ---
+
+## 执行异常 / 偏差记录（2026-08-18 执行）
+1. **px4_msgs 版本**：`main` 分支的 `VehicleCommand`/`VehicleLocalPosition`/`VehicleStatus` 等与 PX4 v1.15.4 固件消息**不兼容**（字段/常量漂移）；改用 `v1.15.4` tag（与固件逐字段一致）。px4_ros_com 无 release 分支，用 main。
+2. **DDS 不可用（WSL2）**：本机是 WSL2（eth0 DOWN + FastDDS 发现失败），且 ROS2 Humble FastDDS 2.6 ↔ Agent FastDDS 2.14 **发现后无法传数据**。解决：`RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`（sudo apt install ros-humble-rmw-cyclonedds-cpp），并预启动 `ros2 daemon`；`gz/dds/loopback_fastdds.xml` 保留作 FastDDS 回退方案。
+3. **坐标系**：gz world 为 ENU（x=东,y=北），PX4 本地为 NED（x=北,y=东）——规划器 ENU→NED 转换必须 `(y,x,-z)`，首版按 `(x,y,-z)` 写错导致环绕圆心偏移（已在模拟中肉眼/位姿验证后修正）。
+4. **planner 细节**：PX4 落地后本地 z 参考有 ~2m 漂移，RTL 后以 `arming_state==DISARMED` 判定落地；任务结束后节点主动退出（spin_once + finished 标志），否则 bringup 脚本不会结束。
+5. **bringup 脚本**：`set -u` 与 ROS setup.bash（读未定义 `AMENT_TRACE_SETUP_FILES`）冲突；`setsid` 不能带 `VAR=val` 前缀；后台树清理用 `setsid`+`kill -- -PID`；`ros2 topic list` 需 `timeout -k` 防挂死。
 
 ## 参考定位（均来自 `~/PX4-Autopilot/`，已核实）
 | 用途 | 路径 |
