@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
-# One-shot bringup: PX4 SITL (wind_farm world) + MicroXRCEAgent + inspection planner.
+# One-shot bringup: PX4 SITL (wind_farm world) + MicroXRCEAgent + gz<->ROS2
+# bridges (clock, odom, mid360 lidar, camera) + RViz + inspection planner.
 #
 # Usage:  bash scripts/wind_farm_bringup.sh [HEADLESS]
 #   HEADLESS=1 (or any non-empty arg) runs gz without the GUI.
 #
 # Launches, in order:
 #   1. MicroXRCEAgent (uXRCE-DDS bridge, PX4 <-> ROS2)
-#   2. PX4 SITL with the wind_farm world (x500 at config/drone_home)
-#   3. wind_farm_planner (offboard orbit inspection, then RTL + land)
+#   2. PX4 SITL with the wind_farm world (x500_mid360 at config/drone_home:
+#      front camera + top Mid-360 lidar, see PX4 Tools/simulation/gz/models/x500_mid360)
+#   3. gz -> ROS2 bridges (/clock, odometry, /mid360/points, /mid360, /camera)
+#   4. TF broadcaster (world -> drone frames) + RViz (config/rviz/wind_farm.rviz)
+#   5. wind_farm_planner (offboard orbit inspection, then RTL + land)
 #
 # Requires: PX4-Autopilot at ~/PX4-Autopilot, ROS2 Humble workspace sourced,
 # px4_msgs/px4_ros_com built in the workspace.
@@ -39,24 +43,31 @@ cleanup() {
     # kill the whole process groups (make/px4/gz tree + agent)
     [ -n "${PX4_PID:-}" ] && kill -- -"$PX4_PID" 2>/dev/null
     [ -n "${AGENT_PID:-}" ] && kill "$AGENT_PID" 2>/dev/null
+    [ -n "${BRIDGE_PID:-}" ] && kill "$BRIDGE_PID" 2>/dev/null
+    [ -n "${TF_PID:-}" ] && kill "$TF_PID" 2>/dev/null
+    [ -n "${RVIZ_PID:-}" ] && kill "$RVIZ_PID" 2>/dev/null
     wait 2>/dev/null || true
 }
 trap cleanup EXIT
 # non-interactive bash ignores SIGINT; TERM is the reliable shutdown signal
 trap 'exit 130' TERM INT
 
-echo "=== [1/3] MicroXRCEAgent ==="
+echo "=== [1/5] MicroXRCEAgent ==="
 pkill -x MicroXRCEAgent 2>/dev/null || true
+# stale gz instances make PX4 attach to an old world (drone GPS/height never
+# converges, arming denied); always start from a fresh wind_farm world
+pkill -f "gz sim" 2>/dev/null || true
+pkill -f "ros_gz_bridge parameter_bridge" 2>/dev/null || true
 sleep 1
 MicroXRCEAgent udp4 -p 8888 -v 0 &
 AGENT_PID=$!
 
-echo "=== [2/3] PX4 SITL (world=wind_farm, pose=$MODEL_POSE) ==="
+echo "=== [2/5] PX4 SITL (world=wind_farm, model=gz_x500_mid360, pose=$MODEL_POSE) ==="
 cd "$PX4_DIR"
 if [ -n "$HEADLESS" ]; then export HEADLESS=1; fi
 # setsid: give make its own process group so cleanup can kill the whole tree
-# UXRCE_DDS_SYNCT=0 
-PX4_GZ_WORLD=wind_farm PX4_GZ_MODEL_POSE="$MODEL_POSE" setsid  make px4_sitl gz_x500 &
+# UXRCE_DDS_SYNCT=0
+PX4_GZ_WORLD=wind_farm PX4_GZ_MODEL_POSE="$MODEL_POSE" setsid  make px4_sitl gz_x500_mid360 &
 PX4_PID=$!
 
 # wait for the uXRCE-DDS topics to appear
@@ -76,7 +87,32 @@ if ! timeout -k 2 3 ros2 topic list 2>/dev/null | grep -q '^/fmu/out/vehicle_sta
 fi
 echo "fmu topics up"
 
-echo "=== [3/3] wind_farm_planner ==="
+# bridge the gz sensor/odom/clock topics to ROS2 (rviz + tf broadcaster).
+# Sensor topics are not model-scoped, so the drone's camera/lidar publish at
+# /camera and /mid360 (single-drone world). The drone odometry is on a custom
+# topic (the model's OdometryPublisher plugin redirects it away from the
+# /model/.../odometry_with_covariance topic that PX4's gz_bridge consumes).
+echo "=== [3/5] gz -> ROS2 bridges (clock, odom, lidar, camera) ==="
+ros2 run ros_gz_bridge parameter_bridge \
+    /clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock \
+    /x500_mid360/odom_with_cov@nav_msgs/msg/Odometry[gz.msgs.OdometryWithCovariance \
+    /mid360/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked \
+    /mid360@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan \
+    /camera@sensor_msgs/msg/Image[gz.msgs.Image \
+    /camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo &
+BRIDGE_PID=$!
+sleep 2
+
+echo "=== [4/5] TF broadcaster + RViz ==="
+python3 -u "$FLOATGEN_SRC/scripts/gz_tf_broadcaster.py" &
+TF_PID=$!
+if [ -z "$HEADLESS" ]; then
+    rviz2 -d "$FLOATGEN_SRC/config/rviz/wind_farm.rviz" --ros-args -p use_sim_time:=true &
+    RVIZ_PID=$!
+fi
+sleep 3
+
+echo "=== [5/5] wind_farm_planner ==="
 python3 -u "$PLANNER" "$CONFIG"
 
 echo "=== mission finished ==="

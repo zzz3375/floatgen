@@ -126,6 +126,7 @@ class WindFarmPlanner(Node):
         self.armed = False
         self.offboard = False
         self.finished = False
+        self.last_arm_send = 0.0       # monotonic time of the last ARM command
 
         self.timer = self.create_timer(0.05, self.control_loop)  # 20 Hz
 
@@ -207,6 +208,7 @@ class WindFarmPlanner(Node):
                 self.log_state('ARM (command sent)')
                 self.state = 'ARM'
                 self.state_since = now
+                self.last_arm_send = now
 
         elif self.state == 'ARM':
             self.publish_offboard_mode()
@@ -217,10 +219,16 @@ class WindFarmPlanner(Node):
                                   param2=PX4_CUSTOM_MAIN_MODE_OFFBOARD)
                 self.state = 'OFFBOARD'
                 self.state_since = now
-            elif self.elapsed() > 10.0:
+            elif self.elapsed() > 30.0:
                 self.get_logger().error('arming timeout, aborting')
                 self.state = 'DONE'
                 self.state_since = now
+            elif self.elapsed() - self.last_arm_send > 2.0:
+                # EKF may still be converging (GPS/height fusion); keep
+                # requesting arming until the health checks pass
+                self.send_command(CMD_COMPONENT_ARM_DISARM, param1=1.0)
+                self.last_arm_send = now
+                self.get_logger().info('ARM (retry, waiting for health checks)')
 
         elif self.state == 'OFFBOARD':
             self.publish_offboard_mode()
