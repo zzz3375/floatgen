@@ -104,7 +104,7 @@ BRIDGE_PID=$!
 sleep 2
 
 echo "=== [4/5] TF broadcaster + RViz ==="
-python3 -u "$FLOATGEN_SRC/scripts/gz_tf_broadcaster.py" &
+python3 -u "$FLOATGEN_SRC/scripts/gz_tf_broadcaster.py" --ros-args -p use_sim_time:=true &
 TF_PID=$!
 if [ -z "$HEADLESS" ]; then
     rviz2 -d "$FLOATGEN_SRC/config/rviz/wind_farm.rviz" --ros-args -p use_sim_time:=true &
