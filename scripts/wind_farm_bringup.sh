@@ -19,7 +19,9 @@
 # AMENT_TRACE_SETUP_FILES which is unset by default and kills nounset shells.
 set +u
 
-HEADLESS="${1:-${HEADLESS:-}}"
+HEADLESS="${1:-${HEADLESS:-false}}"
+# normalise: "false"/"0"/"" → empty (GUI on); anything else → "1"
+case "${HEADLESS,,}" in false|0|"") HEADLESS="";; esac
 WORKSPACE="${ROS2_WS:-$HOME/ros2_ws}"
 PX4_DIR="${PX4_DIR:-$HOME/PX4-Autopilot}"
 FLOATGEN_SRC="$WORKSPACE/src/floatgen"
@@ -38,14 +40,29 @@ DRONE_HOME_Y="$(python3 -c "import yaml;print(yaml.safe_load(open('$CONFIG'))['d
 DRONE_HOME_Z="$(python3 -c "import yaml;print(yaml.safe_load(open('$CONFIG'))['drone_home']['z'])")"
 MODEL_POSE="$DRONE_HOME_X,$DRONE_HOME_Y,$DRONE_HOME_Z,0,0,0"
 
+_kill_tree() {
+    # Recursively terminate a process and all its descendants (depth-first).
+    local pid=$1
+    local child
+    for child in $(pgrep -P "$pid" 2>/dev/null); do
+        _kill_tree "$child"
+    done
+    kill "$pid" 2>/dev/null || true
+}
+
 cleanup() {
     echo "=== shutting down ==="
-    # kill the whole process groups (make/px4/gz tree + agent)
-    [ -n "${PX4_PID:-}" ] && kill -- -"$PX4_PID" 2>/dev/null
-    [ -n "${AGENT_PID:-}" ] && kill "$AGENT_PID" 2>/dev/null
-    [ -n "${BRIDGE_PID:-}" ] && kill "$BRIDGE_PID" 2>/dev/null
-    [ -n "${TF_PID:-}" ] && kill "$TF_PID" 2>/dev/null
-    [ -n "${RVIZ_PID:-}" ] && kill "$RVIZ_PID" 2>/dev/null
+    # Without setsid we cannot use kill -- -$PGID in a non-interactive shell.
+    # _kill_tree walks the make→px4 tree while make is still alive, and the
+    # explicit pkill -f calls catch gz/px4 processes that make already exited
+    # and were reparented to init before cleanup ran.
+    [ -n "${PX4_PID:-}" ]   && _kill_tree "$PX4_PID"
+    pkill -f "gz sim"                       2>/dev/null || true
+    pkill -f "parameter_bridge"              2>/dev/null || true
+    [ -n "${AGENT_PID:-}" ]  && kill "$AGENT_PID"  2>/dev/null || true
+    [ -n "${BRIDGE_PID:-}" ] && kill "$BRIDGE_PID" 2>/dev/null || true
+    [ -n "${TF_PID:-}" ]     && kill "$TF_PID"     2>/dev/null || true
+    [ -n "${RVIZ_PID:-}" ]   && kill "$RVIZ_PID"   2>/dev/null || true
     wait 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -65,9 +82,12 @@ AGENT_PID=$!
 echo "=== [2/5] PX4 SITL (world=wind_farm, model=gz_x500_mid360, pose=$MODEL_POSE) ==="
 cd "$PX4_DIR"
 if [ -n "$HEADLESS" ]; then export HEADLESS=1; fi
-# setsid: give make its own process group so cleanup can kill the whole tree
 # UXRCE_DDS_SYNCT=0
-PX4_GZ_WORLD=wind_farm PX4_GZ_MODEL_POSE="$MODEL_POSE" setsid  make px4_sitl gz_x500_mid360 &
+# NOTE: do NOT use setsid — it detaches from the X11 session and prevents
+# gz-sim's GUI window from connecting to the display.  Launch make directly in
+# the background; non-interactive bash places it in the script's own process
+# group, so cleanup uses pkill -P to walk the process tree by parent PID.
+PX4_GZ_WORLD=wind_farm PX4_GZ_MODEL_POSE="$MODEL_POSE" make px4_sitl gz_x500_mid360 &
 PX4_PID=$!
 
 # wait for the uXRCE-DDS topics to appear
@@ -101,10 +121,19 @@ ros2 run ros_gz_bridge parameter_bridge \
     /camera@sensor_msgs/msg/Image[gz.msgs.Image \
     /camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo &
 BRIDGE_PID=$!
-sleep 2
+# Wait for /clock to stabilise before launching nodes with use_sim_time:=true.
+# Without this, rviz2 and tf2_buffer initialise against system time, then
+# reset on the first /clock message → repeated "Detected jump back in time".
+for i in $(seq 1 20); do
+    if timeout -k 1 2 ros2 topic hz /clock 2>/dev/null | grep -q 'average rate'; then
+        break
+    fi
+    sleep 0.5
+done
+sleep 1
 
 echo "=== [4/5] TF broadcaster + RViz ==="
-python3 -u "$FLOATGEN_SRC/scripts/gz_tf_broadcaster.py" --ros-args -p use_sim_time:=true &
+python3 -u "$FLOATGEN_SRC/scripts/gz_tf_broadcaster.py" --ros-args -p use_sim_time:=true -p filter_alpha:=0.25 &
 TF_PID=$!
 if [ -z "$HEADLESS" ]; then
     rviz2 -d "$FLOATGEN_SRC/config/rviz/wind_farm.rviz" --ros-args -p use_sim_time:=true &

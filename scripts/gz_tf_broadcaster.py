@@ -37,6 +37,8 @@ Usage:
     python3 gz_tf_broadcaster.py
 """
 
+import math
+
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
@@ -111,21 +113,55 @@ class GzTfBroadcaster(Node):
                    for child, parent in SENSOR_FRAMES.items()]
         self.static_broadcaster.sendTransform(static)
 
+        # EMA low-pass filter to suppress high-frequency odometry jitter.
+        # alpha ∈ (0, 1]: smaller → smoother, 1.0 → no filtering (passthrough).
+        self.declare_parameter('filter_alpha', 0.25)
+        self._alpha = self.get_parameter('filter_alpha').value
+        self._prev_pos = None
+        self._prev_quat = None
+
         qos = QoSProfile(depth=5, reliability=ReliabilityPolicy.BEST_EFFORT,
                          history=HistoryPolicy.KEEP_LAST)
         self.create_subscription(Odometry, ODOM_TOPIC, self.odom_cb, qos)
         self.get_logger().info(
-            'publishing TF from {} (fixed frame: world)'.format(ODOM_TOPIC))
+            'publishing TF from {} (fixed frame: world, filter alpha={})'.format(
+                ODOM_TOPIC, self._alpha))
 
     def odom_cb(self, msg):
+        pos = msg.pose.pose.position
+        quat = msg.pose.pose.orientation
+
+        if self._prev_pos is None:
+            self._prev_pos = [pos.x, pos.y, pos.z]
+            self._prev_quat = [quat.x, quat.y, quat.z, quat.w]
+        else:
+            a = self._alpha
+            # EMA on position
+            self._prev_pos[0] += a * (pos.x - self._prev_pos[0])
+            self._prev_pos[1] += a * (pos.y - self._prev_pos[1])
+            self._prev_pos[2] += a * (pos.z - self._prev_pos[2])
+            # Shortest-path linear blend on quaternion (NLerp):
+            # flip sign if needed so we interpolate the short way around.
+            qx, qy, qz, qw = self._prev_quat
+            dot = qx * quat.x + qy * quat.y + qz * quat.z + qw * quat.w
+            sign = -1.0 if dot < 0.0 else 1.0
+            qx += a * (sign * quat.x - qx)
+            qy += a * (sign * quat.y - qy)
+            qz += a * (sign * quat.z - qz)
+            qw += a * (sign * quat.w - qw)
+            norm = math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw)
+            self._prev_quat = [qx / norm, qy / norm, qz / norm, qw / norm]
+
         t = TransformStamped()
         t.header = msg.header
         t.child_frame_id = MODEL_FRAME
-        # position is a Point, translation needs a Vector3 (same layout)
-        t.transform.translation.x = msg.pose.pose.position.x
-        t.transform.translation.y = msg.pose.pose.position.y
-        t.transform.translation.z = msg.pose.pose.position.z
-        t.transform.rotation = msg.pose.pose.orientation
+        t.transform.translation.x = self._prev_pos[0]
+        t.transform.translation.y = self._prev_pos[1]
+        t.transform.translation.z = self._prev_pos[2]
+        t.transform.rotation.x = self._prev_quat[0]
+        t.transform.rotation.y = self._prev_quat[1]
+        t.transform.rotation.z = self._prev_quat[2]
+        t.transform.rotation.w = self._prev_quat[3]
         self.tf_broadcaster.sendTransform(t)
 
 
@@ -135,10 +171,13 @@ def main(args=None):
     try:
         while rclpy.ok():
             rclpy.spin_once(node, timeout_sec=0.1)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, rclpy.executors.ExternalShutdownException):
         pass
     node.destroy_node()
-    rclpy.shutdown()
+    try:
+        rclpy.shutdown()
+    except Exception:
+        pass
 
 
 if __name__ == '__main__':
