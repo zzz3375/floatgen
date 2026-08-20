@@ -285,7 +285,7 @@ class WindFarmPlanner(Node):
             # altitude reference can drift a couple of metres, so accept
             # either a disarmed state or a near-home altitude.
             landed = (self.status.arming_state == ARMING_STATE_DISARMED
-                      or pos[2] > -8.0)
+                      or pos[2] > -1.0)
             if landed and self.elapsed() > 5.0:
                 self.log_state('LANDED -> DISARM')
                 if self.status.arming_state == ARMING_STATE_ARMED:

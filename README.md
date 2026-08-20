@@ -20,6 +20,9 @@ gz/
 │   ├── model.config
 │   ├── model.sdf                 # meshes authored in assembled frame -> identity poses
 │   └── meshes/*.dae
+├── models/x500_mid360/           # drone model (symlinked into PX4)
+│   ├── model.config
+│   └── model.sdf                 # x500 + camera + lidar + odom publisher
 └── worlds/wind_farm.sdf          # PX4 world (default.sdf template + 4 turbines + wind)
 config/
 ├── wind_farm.yaml                # single source of truth: layout, GPS origin, drone home, orbit
@@ -31,11 +34,13 @@ scripts/
 ```
 
 The drone model `x500_mid360` (camera + `gpu_lidar` Mid-360 emulation +
-odometry publisher) lives **inside the PX4 tree**, because PX4's `gz_bridge`
-spawns models via `model://` URIs:
+odometry publisher) is **authoritative in this repo** under `gz/models/x500_mid360/`
+and symlinked into the PX4 tree, because PX4's `gz_bridge` spawns models via
+`model://` URIs:
 
 ```
-~/PX4-Autopilot/Tools/simulation/gz/models/x500_mid360/{model.config, model.sdf}
+gz/models/x500_mid360/{model.config, model.sdf}   ← source of truth
+~/PX4-Autopilot/Tools/simulation/gz/models/x500_mid360 → symlink to above
 ~/PX4-Autopilot/ROMFS/px4fmu_common/init.d-posix/airframes/4012_gz_x500_mid360
 ```
 
@@ -105,18 +110,18 @@ cd ~/PX4-Autopilot
 bash ./Tools/setup/ubuntu.sh --no-nuttx --no-sim-tools   # 安装编译依赖（或按官方文档）
 ```
 
-把无人机模型放进 PX4（`gz_bridge` 通过 `model://` 找模型，模型必须在
+把无人机模型软链进 PX4（`gz_bridge` 通过 `model://` 找模型，模型必须在
 PX4 的 `Tools/simulation/gz/models` 下）：
 
 ```bash
-# 目录结构（本项目已就位；从零搭建时照此创建）：
-#   Tools/simulation/gz/models/x500_mid360/model.config
-#   Tools/simulation/gz/models/x500_mid360/model.sdf
+ln -sfn ~/ros2_ws/src/floatgen/gz/models/x500_mid360 \
+        ~/PX4-Autopilot/Tools/simulation/gz/models/x500_mid360
 ```
 
 `model.sdf` = `x500`（include 合并）+ 前向相机 `camera_link` + 顶部
-Mid-360 模拟 `mid360_link`（`gpu_lidar`）+ OdometryPublisher 插件
-（**话题必须重定向**，见"踩坑点"）。
+Mid-360 模拟 `mid360_link`（`gpu_lidar`，高于 base_link 5 cm）+ OdometryPublisher
+插件（**话题必须重定向**，见"踩坑点"）。模型的源文件在本项目
+`gz/models/x500_mid360/`，修改请在本项目内操作。
 
 注册空气框架（文件名即运行时匹配的 autostart id）：
 
@@ -229,7 +234,7 @@ world（gz ENU 世界系）
     └─ x500_mid360/base_link       静态 +z=0.24（x500_base 的模型位姿）
        ├─ x500_mid360/camera_link  静态 (0.12, 0, 0.002)
        │   └─ x500_mid360_0/camera_link/camera    恒等（gz 传感器帧名）
-       └─ x500_mid360/mid360_link  静态 (0, 0, 0.35)
+       └─ x500_mid360/mid360_link  静态 (0, 0, 0.05)
            └─ x500_mid360_0/mid360_link/mid360    恒等（gz 传感器帧名）
 ```
 
@@ -257,8 +262,8 @@ STREAM → ARM → OFFBOARD → FLY（12 个航点）→ RTL → LAND → DONE
 
 2. **link 的 `<pose>` 是相对 model 坐标系，不是相对父 link**：
    `base_link` 因为 `x500_base` 的 `<pose>0 0 .24</pose>` 在模型系 z=0.24。
-   挂载传感器时按模型系写：`mid360_link` 要在 base_link 上方 0.35，就得写
-   `0 0 0.59`（0.24+0.35）。TF 广播脚本里的偏移也要按 base_link 相对算。
+   挂载传感器时按模型系写：`mid360_link` 要在 base_link 上方 0.05，就得写
+   `0 0 0.29`（0.24+0.05）。TF 广播脚本里的偏移也要按 base_link 相对算。
 
 3. **PX4 以 `<model>_<instance>` 名字 spawn（x500_mid360_0）**，且通过
    `model://` URI 加载时，gz 传感器的 frame_id 会带上这个实体名：

@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sdf version='1.9'>
+  <model name='x500_mid360'>
+    <include merge='true'>
+      <uri>x500</uri>
+    </include>
+
+    <!-- Front camera (looks along +x, the x500 forward axis), deck-mounted.
+         Link poses are model-relative: base_link is at z=0.24 (x500_base
+         model pose), so 0.242 puts the camera just above the front deck. -->
+    <link name="camera_link">
+      <pose>0.12 0.0 0.242 0 0 0</pose>
+      <inertial>
+        <mass>0.05</mass>
+        <inertia>
+          <ixx>0.00004</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.00004</iyy>
+          <iyz>0</iyz>
+          <izz>0.00004</izz>
+        </inertia>
+      </inertial>
+      <visual name="camera_visual">
+        <pose>0 0 -0.005 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.04 0.04 0.04</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.05 0.05 0.05 1</ambient>
+          <diffuse>0.1 0.1 0.1 1</diffuse>
+          <specular>0.1 0.1 0.1 1</specular>
+        </material>
+      </visual>
+      <sensor name="camera" type="camera">
+        <pose>0 0 0 0 0 0</pose>
+        <camera>
+          <horizontal_fov>1.396</horizontal_fov>
+          <image>
+            <width>1280</width>
+            <height>720</height>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>3000</far>
+          </clip>
+        </camera>
+        <always_on>1</always_on>
+        <update_rate>30</update_rate>
+        <visualize>true</visualize>
+        <topic>camera</topic>
+      </sensor>
+    </link>
+    <joint name="camera_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>camera_link</child>
+    </joint>
+
+    <!-- Livox Mid-360 style lidar on top of the frame, just above the props.
+         base_link sits at z=0.24 in the model frame (x500_base model pose),
+         so 0.29 above the model origin == 0.05 above base_link. -->
+    <link name="mid360_link">
+      <pose>0 0 0.29 0 0 0</pose>
+      <inertial>
+        <mass>0.265</mass>
+        <inertia>
+          <ixx>0.00004</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.00004</iyy>
+          <iyz>0</iyz>
+          <izz>0.00004</izz>
+        </inertia>
+      </inertial>
+      <visual name="mid360_visual">
+        <geometry>
+          <cylinder>
+            <radius>0.05</radius>
+            <length>0.06</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.05 0.05 0.05 1</ambient>
+          <diffuse>0.1 0.1 0.1 1</diffuse>
+          <specular>0.1 0.1 0.1 1</specular>
+        </material>
+      </visual>
+      <sensor name="mid360" type="gpu_lidar">
+        <pose>0 0 0 0 0 0</pose>
+        <topic>mid360</topic>
+        <update_rate>10</update_rate>
+        <lidar>
+          <!-- Mid-360: 360 deg horizontal (rotating), ~27.6 deg vertical FOV
+               (-7 deg .. +20.6 deg), 40 m @10% reflectivity / 90 m max. -->
+          <scan>
+            <horizontal>
+              <samples>720</samples>
+              <resolution>1</resolution>
+              <min_angle>-3.14159</min_angle>
+              <max_angle>3.14159</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>24</samples>
+              <resolution>1</resolution>
+              <min_angle>-0.122</min_angle>
+              <max_angle>0.359</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.1</min>
+            <max>90.0</max>
+            <resolution>0.01</resolution>
+          </range>
+        </lidar>
+        <always_on>1</always_on>
+        <visualize>true</visualize>
+      </sensor>
+    </link>
+    <joint name="mid360_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>mid360_link</child>
+    </joint>
+
+    <!-- Model world pose as odometry, for the ROS2 TF bridge (world -> base_link).
+         WARNING: PX4's gz_bridge consumes /model/<name>/odometry_with_covariance and
+         feeds it into vehicle_odometry (zero covariances corrupt the EKF), so the
+         with-covariance topic MUST be redirected to a custom name the bridge never
+         subscribes to. robot_base_frame defaults to <actual model name>/base_link. -->
+    <plugin filename="gz-sim-odometry-publisher-system"
+            name="gz::sim::systems::OdometryPublisher">
+      <odom_frame>world</odom_frame>
+      <odom_topic>/x500_mid360/odom</odom_topic>
+      <odom_covariance_topic>/x500_mid360/odom_with_cov</odom_covariance_topic>
+    </plugin>
+  </model>
+</sdf>

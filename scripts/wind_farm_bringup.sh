@@ -11,7 +11,8 @@
 #      front camera + top Mid-360 lidar, see PX4 Tools/simulation/gz/models/x500_mid360)
 #   3. gz -> ROS2 bridges (/clock, odometry, /mid360/points, /mid360, /camera)
 #   4. TF broadcaster (world -> drone frames) + RViz (config/rviz/wind_farm.rviz)
-#   5. wind_farm_planner (offboard orbit inspection, then RTL + land)
+#   5. flight_path_publisher (nav_msgs/Path in world frame for RViz trail)
+#   6. wind_farm_planner (offboard orbit inspection, then RTL + land)
 #
 # Requires: PX4-Autopilot at ~/PX4-Autopilot, ROS2 Humble workspace sourced,
 # px4_msgs/px4_ros_com built in the workspace.
@@ -63,13 +64,14 @@ cleanup() {
     [ -n "${BRIDGE_PID:-}" ] && kill "$BRIDGE_PID" 2>/dev/null || true
     [ -n "${TF_PID:-}" ]     && kill "$TF_PID"     2>/dev/null || true
     [ -n "${RVIZ_PID:-}" ]   && kill "$RVIZ_PID"   2>/dev/null || true
+    [ -n "${PATH_PID:-}" ]   && kill "$PATH_PID"   2>/dev/null || true
     wait 2>/dev/null || true
 }
 trap cleanup EXIT
 # non-interactive bash ignores SIGINT; TERM is the reliable shutdown signal
 trap 'exit 130' TERM INT
 
-echo "=== [1/5] MicroXRCEAgent ==="
+echo "=== [1/6] MicroXRCEAgent ==="
 pkill -x MicroXRCEAgent 2>/dev/null || true
 # stale gz instances make PX4 attach to an old world (drone GPS/height never
 # converges, arming denied); always start from a fresh wind_farm world
@@ -79,7 +81,7 @@ sleep 1
 MicroXRCEAgent udp4 -p 8888 -v 0 &
 AGENT_PID=$!
 
-echo "=== [2/5] PX4 SITL (world=wind_farm, model=gz_x500_mid360, pose=$MODEL_POSE) ==="
+echo "=== [2/6] PX4 SITL (world=wind_farm, model=gz_x500_mid360, pose=$MODEL_POSE) ==="
 cd "$PX4_DIR"
 if [ -n "$HEADLESS" ]; then export HEADLESS=1; fi
 # UXRCE_DDS_SYNCT=0
@@ -112,7 +114,7 @@ echo "fmu topics up"
 # /camera and /mid360 (single-drone world). The drone odometry is on a custom
 # topic (the model's OdometryPublisher plugin redirects it away from the
 # /model/.../odometry_with_covariance topic that PX4's gz_bridge consumes).
-echo "=== [3/5] gz -> ROS2 bridges (clock, odom, lidar, camera) ==="
+echo "=== [3/6] gz -> ROS2 bridges (clock, odom, lidar, camera) ==="
 ros2 run ros_gz_bridge parameter_bridge \
     /clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock \
     /x500_mid360/odom_with_cov@nav_msgs/msg/Odometry[gz.msgs.OdometryWithCovariance \
@@ -132,7 +134,7 @@ for i in $(seq 1 20); do
 done
 sleep 1
 
-echo "=== [4/5] TF broadcaster + RViz ==="
+echo "=== [4/6] TF broadcaster + RViz ==="
 python3 -u "$FLOATGEN_SRC/scripts/gz_tf_broadcaster.py" --ros-args -p use_sim_time:=true -p filter_alpha:=0.25 &
 TF_PID=$!
 if [ -z "$HEADLESS" ]; then
@@ -141,7 +143,12 @@ if [ -z "$HEADLESS" ]; then
 fi
 sleep 3
 
-echo "=== [5/5] wind_farm_planner ==="
+echo "=== [5/6] flight_path_publisher ==="
+python3 -u "$FLOATGEN_SRC/scripts/flight_path_publisher.py" "$CONFIG" &
+PATH_PID=$!
+
+echo "=== [6/6] wind_farm_planner ==="
 python3 -u "$PLANNER" "$CONFIG"
 
+sleep 3
 echo "=== mission finished ==="

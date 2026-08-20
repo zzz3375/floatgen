@@ -68,10 +68,10 @@ MODEL_TO_BASE_LINK = ((0.0, 0.0, 0.24), (0.0, 0.0, 0.0))
 # Sensor mounts relative to base_link ((x y z), (r p y)). Link <pose> is
 # model-relative, so these are base_link_pose + mount_pose, matching
 # PX4-Autopilot Tools/simulation/gz/models/x500_mid360/model.sdf:
-#   camera_link (0.12 0 0.242), mid360_link (0 0 0.59) in the model frame.
+#   camera_link (0.12 0 0.242), mid360_link (0 0 0.29) in the model frame.
 SENSOR_MOUNTS = {
     '{}/camera_link'.format(MODEL): ((0.12, 0.0, 0.002), (0.0, 0.0, 0.0)),
-    '{}/mid360_link'.format(MODEL): ((0.0, 0.0, 0.35), (0.0, 0.0, 0.0)),
+    '{}/mid360_link'.format(MODEL): ((0.0, 0.0, 0.05), (0.0, 0.0, 0.0)),
 }
 
 # gz-sensors publishes sensor data with frame = <model>::<link>::<sensor>;
