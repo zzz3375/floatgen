@@ -282,12 +282,13 @@ class WindFarmSimulator(Node):
         elif self.state == 'FLY':
             # If PX4 dropped out of offboard mode (watchdog timeout), try to
             # re-enter before the drone drifts too far.
-            if self.status.nav_state != NAVIGATION_STATE_OFFBOARD:
-                self.get_logger().warn(
-                    f'lost offboard (nav_state={self.status.nav_state}), '
-                    f'requesting again')
-                self.send_command(CMD_DO_SET_MODE, param1=1.0,
-                                  param2=PX4_CUSTOM_MAIN_MODE_OFFBOARD)
+            # if self.status.nav_state != NAVIGATION_STATE_OFFBOARD:
+            #     self.get_logger().warn(
+            #         f'lost offboard (nav_state={self.status.nav_state}), '
+            #         f'requesting again')
+            #     self.send_command(CMD_DO_SET_MODE, param1=1.0,
+            #                       param2=PX4_CUSTOM_MAIN_MODE_OFFBOARD)
+            #  zzz3375: 这个强制转offboard不需要，去除掉
             self.publish_offboard_mode()
             self.publish_setpoint(self.target)
             dx = pos[0] - self.target[0]
