@@ -1,6 +1,6 @@
 # Wind-farm inspection configuration.
 # Single source of truth for the gz world layout (gz/worlds/wind_farm.sdf)
-# and the ROS2 planner (scripts/wind_farm_planner.py).
+# and the ROS2 simulator (scripts/wind_farm_simulator.py, scripts/cycle_planner.py).
 #
 # Coordinate conventions:
 #   - turbine positions are ENU metres in the gz world frame (tower base),

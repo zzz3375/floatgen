@@ -12,7 +12,7 @@
 #   3. gz -> ROS2 bridges (/clock, odometry, /mid360/points, /mid360, /camera)
 #   4. TF broadcaster (world -> drone frames) + RViz (config/rviz/wind_farm.rviz)
 #   5. flight_path_publisher (nav_msgs/Path in world frame for RViz trail)
-#   6. wind_farm_planner (offboard orbit inspection, then RTL + land)
+#   6. wind_farm_simulator (offboard orbit inspection, then RTL + land)
 #
 # Requires: PX4-Autopilot at ~/PX4-Autopilot, ROS2 Humble workspace sourced,
 # px4_msgs/px4_ros_com built in the workspace.
@@ -26,7 +26,7 @@ case "${HEADLESS,,}" in false|0|"") HEADLESS="";; esac
 WORKSPACE="${ROS2_WS:-$HOME/ros2_ws}"
 PX4_DIR="${PX4_DIR:-$HOME/PX4-Autopilot}"
 FLOATGEN_SRC="$WORKSPACE/src/floatgen"
-PLANNER="$FLOATGEN_SRC/scripts/wind_farm_planner.py"
+SIMULATOR="$FLOATGEN_SRC/scripts/wind_farm_simulator.py"
 CONFIG="$FLOATGEN_SRC/config/wind_farm.yaml"
 
 # WSL2: FastDDS discovery is unreliable here; CycloneDDS interoperates with the
@@ -147,8 +147,8 @@ echo "=== [5/6] flight_path_publisher ==="
 python3 -u "$FLOATGEN_SRC/scripts/flight_path_publisher.py" "$CONFIG" &
 PATH_PID=$!
 
-echo "=== [6/6] wind_farm_planner ==="
-python3 -u "$PLANNER" "$CONFIG"
+echo "=== [6/6] wind_farm_simulator ==="
+python3 -u "$SIMULATOR" "$CONFIG"
 
 sleep 3
 echo "=== mission finished ==="

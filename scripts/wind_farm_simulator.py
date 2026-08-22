@@ -13,23 +13,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Wind-farm inspection planner for PX4 SITL (gz wind_farm world).
+"""Wind-farm inspection simulator for PX4 SITL (gz wind_farm world).
 
 Drives the PX4 x500 through an offboard orbit around the first wind turbine
 (wind_turbine_1_1 at the farm origin), then returns to launch and lands:
 
-    stream setpoints -> arm -> offboard -> orbit waypoints -> RTL -> land -> disarm
+    stream setpoints -> arm -> offboard -> TAKEOFF -> hold -> plan cycle
+    -> orbit waypoints -> RTL -> land -> disarm
 
-All setpoints are position setpoints (OffboardControlMode.position + 
+All setpoints are position setpoints (OffboardControlMode.position +
 TrajectorySetpoint) in the PX4 local NED frame, home = drone spawn point
 (PX4_GZ_MODEL_POSE in the ENU gz world). Configuration comes from
 config/wind_farm.yaml (same file the world layout was generated from).
 
+Waypoint ordering is computed by cycle_planner — after reaching the holding
+altitude the orbit is reordered so the first waypoint is nearest to the
+drone's current hover position.
+
 Usage:
-    ros2 run floatgen wind_farm_planner
+    ros2 run floatgen wind_farm_simulator
 """
 
 import math
+import os
 import sys
 import time
 
@@ -41,6 +47,11 @@ from px4_msgs.msg import OffboardControlMode, TrajectorySetpoint
 from px4_msgs.msg import VehicleCommand, VehicleLocalPosition, VehicleStatus
 
 import yaml
+
+# cycle_planner lives alongside this script; ensure it is importable when
+# invoked via ros2 run (where CWD is not the scripts directory).
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from cycle_planner import CyclePlanner
 
 
 # PX4 VehicleStatus constants (px4_msgs v1.15.4)
@@ -65,10 +76,10 @@ def ned_from_enu(enu, home_enu):
     return (enu[1] - home_enu[1], enu[0] - home_enu[0], -(enu[2] - home_enu[2]))
 
 
-class WindFarmPlanner(Node):
+class WindFarmSimulator(Node):
 
     def __init__(self, config_path):
-        super().__init__('wind_farm_planner')
+        super().__init__('wind_farm_simulator')
         with open(config_path) as f:
             self.cfg = yaml.safe_load(f)
 
@@ -110,18 +121,21 @@ class WindFarmPlanner(Node):
         self.wp_timeout = insp['waypoint_timeout']
         self.yaw_towards = insp['yaw_towards_turbine']
 
-        # orbit waypoints around the turbine centre
-        self.waypoints = []
-        for i in range(self.num_wp):
-            theta = 2.0 * math.pi * i / self.num_wp
-            n = self.center_ned[0] + self.orbit_radius * math.cos(theta)
-            e = self.center_ned[1] + self.orbit_radius * math.sin(theta)
-            self.waypoints.append((n, e, self.orbit_z))
+        # orbit waypoints around the turbine centre (initial order; reordered
+        # from the drone's hover position after takeoff — see TAKEOFF state)
+        self.cycle = CyclePlanner(
+            center_ned=self.center_ned,
+            radius=self.orbit_radius,
+            altitude_z=self.orbit_z,
+            num_waypoints=self.num_wp,
+        )
+        self.waypoints = self.cycle.waypoints
 
         # --- state machine -------------------------------------------------
-        self.state = 'STREAM'          # STREAM -> ARM -> OFFBOARD -> FLY -> RTL -> LAND -> DONE
+        self.state = 'STREAM'          # STREAM -> ARM -> OFFBOARD -> TAKEOFF -> FLY -> RTL -> LAND -> DONE
         self.state_since = time.monotonic()
         self.waypoint_idx = 0
+        self.takeoff_pos = None        # xy position held during vertical climb
         self.target = None             # current NED setpoint
         self.armed = False
         self.offboard = False
@@ -234,17 +248,46 @@ class WindFarmPlanner(Node):
             self.publish_offboard_mode()
             self.publish_setpoint(self.target)
             if self.status.nav_state == NAVIGATION_STATE_OFFBOARD:
-                self.log_state('OFFBOARD active, flying to first waypoint')
-                self.waypoint_idx = 0
-                self.target = self.waypoints[0]
-                self.state = 'FLY'
+                self.log_state('OFFBOARD active, climbing to altitude')
+                self.takeoff_pos = (pos[0], pos[1])
+                self.target = (pos[0], pos[1], self.orbit_z)
+                self.state = 'TAKEOFF'
                 self.state_since = now
             elif self.elapsed() > 10.0:
                 self.get_logger().error('offboard mode timeout, aborting')
                 self.state = 'DONE'
                 self.state_since = now
 
+        elif self.state == 'TAKEOFF':
+            self.publish_offboard_mode()
+            self.publish_setpoint(self.target)
+            if abs(pos[2] - self.target[2]) < 1.5:
+                # reorder orbit so the first waypoint is nearest to the
+                # drone's current hover position
+                self.cycle.reorder_from((pos[0], pos[1]))
+                self.waypoints = self.cycle.waypoints
+                k = self.cycle.nearest_index((pos[0], pos[1]))
+                self.log_state(
+                    f'altitude reached ({-self.orbit_z:.1f}m), '
+                    f'phase index k={k}, flying to next waypoint (k+1)')
+                self.waypoint_idx = 0
+                self.target = self.waypoints[0]
+                self.state = 'FLY'
+                self.state_since = now
+            elif self.elapsed() > self.wp_timeout:
+                self.get_logger().error('takeoff timeout, aborting')
+                self.state = 'DONE'
+                self.state_since = now
+
         elif self.state == 'FLY':
+            # If PX4 dropped out of offboard mode (watchdog timeout), try to
+            # re-enter before the drone drifts too far.
+            if self.status.nav_state != NAVIGATION_STATE_OFFBOARD:
+                self.get_logger().warn(
+                    f'lost offboard (nav_state={self.status.nav_state}), '
+                    f'requesting again')
+                self.send_command(CMD_DO_SET_MODE, param1=1.0,
+                                  param2=PX4_CUSTOM_MAIN_MODE_OFFBOARD)
             self.publish_offboard_mode()
             self.publish_setpoint(self.target)
             dx = pos[0] - self.target[0]
@@ -303,7 +346,7 @@ def main(args=None):
     rclpy.init(args=args)
     config = sys.argv[1] if len(sys.argv) > 1 else \
         '/home/zzz2204/ros2_ws/src/floatgen/config/wind_farm.yaml'
-    node = WindFarmPlanner(config)
+    node = WindFarmSimulator(config)
     try:
         while rclpy.ok() and not node.finished:
             rclpy.spin_once(node, timeout_sec=0.1)
