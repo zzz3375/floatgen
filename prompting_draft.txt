@@ -1,27 +1,4 @@
-考虑scripts/wind_farm_bringup.sh scripts/wind_farm_planner.py 
-航线规划需要独立成一个模块，wind_farm_planner.py 可以改名为wind_farm_simulator.py, *_planner.py 作为不同轨迹计算的子模块
-飞机起飞后到指定高度悬停 (holding)，悬停过程中独立航点规划节点进行航线规划
-比如新增cycle_planner.py:
-    原本scripts/wind_farm_planner.py的集成的线路组成是
-    """
-    for i in range(self.num_wp):
-        theta = 2.0 * math.pi * i / self.num_wp
-        n = self.center_ned[0] + self.orbit_radius * math.cos(theta)
-        e = self.center_ned[1] + self.orbit_radius * math.sin(theta)
-        self.waypoints.append((n, e, self.orbit_z))
-    """
-    我要将航线规划独立出来，比如新增cycle_planner.py计算飞机与风机center的相位，然后从最近的相位点开始设置目标
-    """
-    cur_pos_ned = drone holding position
-    delta_n = cur_pos_ned[0] - self.center_ned[0]
-    delta_e = cur_pos_ned[1] - self.center_ned[1] 
-    modulas = np.linalg.norm([delta_n, delta_e])
-    delta_n，delta_e， modulas 得到phase, 判断在 k 和 k+1 之间 (k belong range(self.num_wp)), 需要选择合理的数学工具得到k
-    然后
-    for i in range(self.num_wp):
-        theta = 2.0 * math.pi * (i + k + 1) / self.num_wp
-        n = self.center_ned[0] + self.orbit_radius * math.cos(theta)
-        e = self.center_ned[1] + self.orbit_radius * math.sin(theta)
-        self.waypoints.append((n, e, self.orbit_z))
+/home/zzz2204/ros2_ws/src/floatgen/launch/farm_launch.py
 
-    """
+scripts/wind_farm_bringup.sh巡检目标target风机需要像launch/farm_launch.py一样可以设置停机或者不停机（带速度），默认使用launch/farm_launch.py的转速配置
+风机旋转播放动画即可，不需要控制模块，比如 ros2 launch floatgen farm_launch.py就可以播放风机转动的动画，供你参考

@@ -9,10 +9,12 @@
 #   1. MicroXRCEAgent (uXRCE-DDS bridge, PX4 <-> ROS2)
 #   2. PX4 SITL with the wind_farm world (x500_mid360 at config/drone_home:
 #      front camera + top Mid-360 lidar, see PX4 Tools/simulation/gz/models/x500_mid360)
-#   3. gz -> ROS2 bridges (/clock, odometry, /mid360/points, /mid360, /camera)
-#   4. TF broadcaster (world -> drone frames) + RViz (config/rviz/wind_farm.rviz)
-#   5. flight_path_publisher (nav_msgs/Path in world frame for RViz trail)
-#   6. wind_farm_simulator (offboard orbit inspection, then RTL + land)
+#   3. Spawn turbines via xacro + ros_gz_sim create (target with blade animation;
+#      decorations static; velocity from config/wind_farm.yaml)
+#   4. gz -> ROS2 bridges (/clock, odometry, /mid360/points, /mid360, /camera)
+#   5. TF broadcaster (world -> drone frames) + RViz (config/rviz/wind_farm.rviz)
+#   6. flight_path_publisher (nav_msgs/Path in world frame for RViz trail)
+#   7. wind_farm_simulator (offboard orbit inspection, then RTL + land)
 #
 # Requires: PX4-Autopilot at ~/PX4-Autopilot, ROS2 Humble workspace sourced,
 # px4_msgs/px4_ros_com built in the workspace.
@@ -41,6 +43,9 @@ DRONE_HOME_Y="$(python3 -c "import yaml;print(yaml.safe_load(open('$CONFIG'))['d
 DRONE_HOME_Z="$(python3 -c "import yaml;print(yaml.safe_load(open('$CONFIG'))['drone_home']['z'])")"
 MODEL_POSE="$DRONE_HOME_X,$DRONE_HOME_Y,$DRONE_HOME_Z,0,0,0"
 
+# turbine blade rotation (rad/s); 0 = stopped, -2 = spinning (default)
+TURBINE_VELOCITY="$(python3 -c "import yaml;print(yaml.safe_load(open('$CONFIG')).get('turbine_velocity', -2.0))")"
+
 _kill_tree() {
     # Recursively terminate a process and all its descendants (depth-first).
     local pid=$1
@@ -65,13 +70,14 @@ cleanup() {
     [ -n "${TF_PID:-}" ]     && kill "$TF_PID"     2>/dev/null || true
     [ -n "${RVIZ_PID:-}" ]   && kill "$RVIZ_PID"   2>/dev/null || true
     [ -n "${PATH_PID:-}" ]   && kill "$PATH_PID"   2>/dev/null || true
+    [ -n "${TURBINE_PID:-}" ] && kill "$TURBINE_PID" 2>/dev/null || true
     wait 2>/dev/null || true
 }
 trap cleanup EXIT
 # non-interactive bash ignores SIGINT; TERM is the reliable shutdown signal
 trap 'exit 130' TERM INT
 
-echo "=== [1/6] MicroXRCEAgent ==="
+echo "=== [1/7] MicroXRCEAgent ==="
 pkill -x MicroXRCEAgent 2>/dev/null || true
 # stale gz instances make PX4 attach to an old world (drone GPS/height never
 # converges, arming denied); always start from a fresh wind_farm world
@@ -81,7 +87,7 @@ sleep 1
 MicroXRCEAgent udp4 -p 8888 -v 0 &
 AGENT_PID=$!
 
-echo "=== [2/6] PX4 SITL (world=wind_farm, model=gz_x500_mid360, pose=$MODEL_POSE) ==="
+echo "=== [2/7] PX4 SITL (world=wind_farm, model=gz_x500_mid360, pose=$MODEL_POSE) ==="
 cd "$PX4_DIR"
 if [ -n "$HEADLESS" ]; then export HEADLESS=1; fi
 # UXRCE_DDS_SYNCT=0
@@ -109,12 +115,27 @@ if ! timeout -k 2 3 ros2 topic list 2>/dev/null | grep -q '^/fmu/out/vehicle_sta
 fi
 echo "fmu topics up"
 
+echo "=== [3/7] spawn target turbine (velocity=$TURBINE_VELOCITY rad/s) ==="
+# The three decoration turbines (2_1, 1_2, 2_2) are static models in the
+# world SDF — they load when PX4 starts Gazebo.  Only the target turbine
+# (1_1 at origin) is spawned dynamically here so its blade rotation velocity
+# can be configured via config/wind_farm.yaml.
+ros2 run xacro xacro "$FLOATGEN_SRC/urdf/farm.xacro" \
+    nx:=1 ny:=1 x:=0.0 y:=0.0 scale:=200.0 yaw:=0.0 \
+    "velocity:=$TURBINE_VELOCITY" \
+    nacelle_yaw:=0.0 blade_pitch:=0.0 hub_position:=0.0 \
+    > /tmp/tw_target.urdf
+ros2 run ros_gz_sim create -name turbine_target -file /tmp/tw_target.urdf &
+TURBINE_PID=$!
+sleep 3
+rm -f /tmp/tw_target.urdf
+
 # bridge the gz sensor/odom/clock topics to ROS2 (rviz + tf broadcaster).
 # Sensor topics are not model-scoped, so the drone's camera/lidar publish at
 # /camera and /mid360 (single-drone world). The drone odometry is on a custom
 # topic (the model's OdometryPublisher plugin redirects it away from the
 # /model/.../odometry_with_covariance topic that PX4's gz_bridge consumes).
-echo "=== [3/6] gz -> ROS2 bridges (clock, odom, lidar, camera) ==="
+echo "=== [4/7] gz -> ROS2 bridges (clock, odom, lidar, camera) ==="
 ros2 run ros_gz_bridge parameter_bridge \
     /clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock \
     /x500_mid360/odom_with_cov@nav_msgs/msg/Odometry[gz.msgs.OdometryWithCovariance \
@@ -134,7 +155,7 @@ for i in $(seq 1 20); do
 done
 sleep 1
 
-echo "=== [4/6] TF broadcaster + RViz ==="
+echo "=== [5/7] TF broadcaster + RViz ==="
 python3 -u "$FLOATGEN_SRC/scripts/gz_tf_broadcaster.py" --ros-args -p use_sim_time:=true -p filter_alpha:=0.25 &
 TF_PID=$!
 if [ -z "$HEADLESS" ]; then
@@ -143,11 +164,11 @@ if [ -z "$HEADLESS" ]; then
 fi
 sleep 3
 
-echo "=== [5/6] flight_path_publisher ==="
+echo "=== [6/7] flight_path_publisher ==="
 python3 -u "$FLOATGEN_SRC/scripts/flight_path_publisher.py" "$CONFIG" &
 PATH_PID=$!
 
-echo "=== [6/6] wind_farm_simulator ==="
+echo "=== [7/7] wind_farm_simulator ==="
 python3 -u "$SIMULATOR" "$CONFIG"
 
 sleep 3

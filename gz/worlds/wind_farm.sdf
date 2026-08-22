@@ -223,11 +223,9 @@
       <pose>0 0 0 0 -0 0</pose>
       <self_collide>false</self_collide>
     </model>
-    <include>
-      <uri>model://wind_turbine</uri>
-      <name>wind_turbine_1_1</name>
-      <pose>0 0 0 0 0 0</pose>
-    </include>
+    <!-- Decoration turbines: static models loaded at world start.
+         The target turbine (1_1 at origin) is NOT included here — it is
+         spawned dynamically with blade animation after PX4 SITL starts. -->
     <include>
       <uri>model://wind_turbine</uri>
       <name>wind_turbine_2_1</name>

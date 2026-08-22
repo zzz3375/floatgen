@@ -36,6 +36,12 @@ turbines:
     x: 300.0
     y: 200.0
 
+# Turbine blade rotation speed (rad/s).
+#   0      → blades locked (stopped turbine, useful for static inspection)
+#   -2.0   → blades spinning (matches farm_launch.py default for visual realism)
+# Passed to the xacro via farm_launch.py when spawning turbines in bringup.
+turbine_velocity: -2.0
+
 inspection:
   # Orbit the first turbine (wind_turbine_1_1 at the farm origin).
   # Rotor radius is ~63 m (blades reach x in [-56, +56], rotor plane at y~7),
