@@ -165,7 +165,10 @@ python3 -u "$FLOATGEN_SRC/scripts/flight_path_publisher.py" "$CONFIG" &
 PATH_PID=$!
 
 echo "=== [7/7] wind_farm_simulator ==="
-python3 -u "$SIMULATOR" "$CONFIG"
+# use_sim_time: PX4's uxrce client converts incoming stamps assuming the host
+# wall-clock domain; sim-time stamps keep setpoints in the same clock domain as
+# PX4's hrt (lockstep), so timesync resets/jumps cannot mark them stale.
+python3 -u "$SIMULATOR" "$CONFIG" --ros-args -p use_sim_time:=true
 
 sleep 3
 echo "=== mission finished ==="
