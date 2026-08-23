@@ -54,3 +54,5 @@ inspection:
   waypoint_tolerance: 3.0     # m, horizontal acceptance radius
   waypoint_timeout: 60.0      # s, max time per waypoint
   yaw_towards_turbine: true
+  setpoint_rate: 50.0         # Hz, offboard setpoint stream rate (PX4 drops
+                              # offboard mode after COM_OF_LOSS_T without one)
