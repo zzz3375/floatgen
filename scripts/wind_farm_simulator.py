@@ -341,7 +341,7 @@ class WindFarmSimulator(Node):
             #     self.state = 'DONE'
             #     self.state_since = now
 
-        elif self.state == 'DONE':
+        if self.state == 'DONE':
             self.get_logger().info('mission finished')
             self.timer.cancel()
             self.finished = True
