@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
-# One-shot bringup: PX4 SITL (wind_farm world) + MicroXRCEAgent + gz<->ROS2
-# bridges (clock, odom, mid360 lidar, camera) + RViz + inspection planner.
+# One-shot bringup: generate dynamic world + PX4 SITL + MicroXRCEAgent +
+# gz<->ROS2 bridges + RViz + inspection planner.
 #
 # Usage:  bash scripts/wind_farm_bringup.sh [HEADLESS]
 #   HEADLESS=1 (or any non-empty arg) runs gz without the GUI.
 #
 # Launches, in order:
-#   1. MicroXRCEAgent (uXRCE-DDS bridge, PX4 <-> ROS2)
-#   2. PX4 SITL with the wind_farm world (x500_mid360 at config/drone_home:
-#      front camera + top Mid-360 lidar, see PX4 Tools/simulation/gz/models/x500_mid360)
-#   3. Spawn turbines via xacro + ros_gz_sim create (target with blade animation;
-#      decorations static; velocity from config/wind_farm.yaml)
+#   1. Generate dynamic world SDF (all turbines with per-turbine params from
+#      config/wind_farm.yaml, embedded via scripts/generate_world.py)
+#   2. MicroXRCEAgent (uXRCE-DDS bridge, PX4 <-> ROS2)
+#   3. PX4 SITL with the generated world (x500_mid360 at config/drone_home)
 #   4. gz -> ROS2 bridges (/clock, odometry, /mid360/points, /mid360, /camera)
 #   5. TF broadcaster (world -> drone frames) + RViz (config/rviz/wind_farm.rviz)
 #   6. flight_path_publisher (nav_msgs/Path in world frame for RViz trail)
@@ -29,7 +28,9 @@ WORKSPACE="${ROS2_WS:-$HOME/ros2_ws}"
 PX4_DIR="${PX4_DIR:-$HOME/PX4-Autopilot}"
 FLOATGEN_SRC="$WORKSPACE/src/floatgen"
 SIMULATOR="$FLOATGEN_SRC/scripts/wind_farm_simulator.py"
+GENERATOR="$FLOATGEN_SRC/scripts/generate_world.py"
 CONFIG="$FLOATGEN_SRC/config/wind_farm.yaml"
+GENERATED_WORLD="$FLOATGEN_SRC/gz/worlds/wind_farm_dynamic.sdf"
 
 # WSL2: FastDDS discovery is unreliable here; CycloneDDS interoperates with the
 # agent's FastDDS and discovers over default interfaces without a profile.
@@ -42,9 +43,6 @@ DRONE_HOME_X="$(python3 -c "import yaml;print(yaml.safe_load(open('$CONFIG'))['d
 DRONE_HOME_Y="$(python3 -c "import yaml;print(yaml.safe_load(open('$CONFIG'))['drone_home']['y'])")"
 DRONE_HOME_Z="$(python3 -c "import yaml;print(yaml.safe_load(open('$CONFIG'))['drone_home']['z'])")"
 MODEL_POSE="$DRONE_HOME_X,$DRONE_HOME_Y,$DRONE_HOME_Z,0,0,0"
-
-# turbine blade rotation (rad/s); 0 = stopped, -2 = spinning (default)
-TURBINE_VELOCITY="$(python3 -c "import yaml;print(yaml.safe_load(open('$CONFIG')).get('turbine_velocity', -2.0))")"
 
 _kill_tree() {
     # Recursively terminate a process and all its descendants (depth-first).
@@ -70,14 +68,20 @@ cleanup() {
     [ -n "${TF_PID:-}" ]     && kill "$TF_PID"     2>/dev/null || true
     [ -n "${RVIZ_PID:-}" ]   && kill "$RVIZ_PID"   2>/dev/null || true
     [ -n "${PATH_PID:-}" ]   && kill "$PATH_PID"   2>/dev/null || true
-    [ -n "${TURBINE_PID:-}" ] && kill "$TURBINE_PID" 2>/dev/null || true
     wait 2>/dev/null || true
 }
 trap cleanup EXIT
 # non-interactive bash ignores SIGINT; TERM is the reliable shutdown signal
 trap 'exit 130' TERM INT
 
-echo "=== [1/7] MicroXRCEAgent ==="
+echo "=== [1/7] Generate dynamic world SDF ==="
+source /opt/ros/humble/setup.bash
+source "$WORKSPACE/install/setup.bash"
+export FLOATGEN_SRC
+python3 "$GENERATOR" --config "$CONFIG" --output "$GENERATED_WORLD"
+echo "dynamic world ready: $GENERATED_WORLD"
+
+echo "=== [2/7] MicroXRCEAgent ==="
 pkill -x MicroXRCEAgent 2>/dev/null || true
 # stale gz instances make PX4 attach to an old world (drone GPS/height never
 # converges, arming denied); always start from a fresh wind_farm world
@@ -87,7 +91,7 @@ sleep 1
 MicroXRCEAgent udp4 -p 8888 -v 0 &
 AGENT_PID=$!
 
-echo "=== [2/7] PX4 SITL (world=wind_farm, model=gz_x500_mid360, pose=$MODEL_POSE) ==="
+echo "=== [3/7] PX4 SITL (world=$GENERATED_WORLD, model=gz_x500_mid360, pose=$MODEL_POSE) ==="
 cd "$PX4_DIR"
 if [ -n "$HEADLESS" ]; then export HEADLESS=1; fi
 # UXRCE_DDS_SYNCT=0
@@ -95,13 +99,20 @@ if [ -n "$HEADLESS" ]; then export HEADLESS=1; fi
 # gz-sim's GUI window from connecting to the display.  Launch make directly in
 # the background; non-interactive bash places it in the script's own process
 # group, so cleanup uses pkill -P to walk the process tree by parent PID.
-PX4_GZ_WORLD=wind_farm PX4_GZ_MODEL_POSE="$MODEL_POSE" make px4_sitl gz_x500_mid360 &
+# Symlink the generated SDF into PX4's own worlds directory so PX4's init
+# script finds it.  Also ensure GZ_SIM_RESOURCE_PATH includes PX4's models
+# directory (for the drone model and wind_turbine mesh resolution).
+PX4_WORLDS="$PX4_DIR/Tools/simulation/gz/worlds"
+PX4_MODELS="$PX4_DIR/Tools/simulation/gz/models"
+WORLD_NAME="$(basename "$GENERATED_WORLD" .sdf)"
+ln -sfn "$GENERATED_WORLD" "$PX4_WORLDS/$WORLD_NAME.sdf"
+export GZ_SIM_RESOURCE_PATH="$PX4_MODELS:${GZ_SIM_RESOURCE_PATH:-}"
+PX4_GZ_WORLD="$WORLD_NAME" PX4_GZ_MODEL_POSE="$MODEL_POSE" \
+    make px4_sitl gz_x500_mid360 &
 PX4_PID=$!
 
 # wait for the uXRCE-DDS topics to appear
 echo "=== waiting for /fmu topics ==="
-source /opt/ros/humble/setup.bash
-source "$WORKSPACE/install/setup.bash"
 timeout 15 ros2 daemon start >/dev/null 2>&1 || true
 for i in $(seq 1 90); do
     if timeout -k 2 3 ros2 topic list 2>/dev/null | grep -q '^/fmu/out/vehicle_status'; then
@@ -114,21 +125,6 @@ if ! timeout -k 2 3 ros2 topic list 2>/dev/null | grep -q '^/fmu/out/vehicle_sta
     exit 1
 fi
 echo "fmu topics up"
-
-echo "=== [3/7] spawn target turbine (velocity=$TURBINE_VELOCITY rad/s) ==="
-# The three decoration turbines (2_1, 1_2, 2_2) are static models in the
-# world SDF — they load when PX4 starts Gazebo.  Only the target turbine
-# (1_1 at origin) is spawned dynamically here so its blade rotation velocity
-# can be configured via config/wind_farm.yaml.
-ros2 run xacro xacro "$FLOATGEN_SRC/urdf/farm.xacro" \
-    nx:=1 ny:=1 x:=0.0 y:=0.0 scale:=200.0 yaw:=0.0 \
-    "velocity:=$TURBINE_VELOCITY" \
-    nacelle_yaw:=0.0 blade_pitch:=0.0 hub_position:=0.0 \
-    > /tmp/tw_target.urdf
-ros2 run ros_gz_sim create -name turbine_target -file /tmp/tw_target.urdf &
-TURBINE_PID=$!
-sleep 3
-rm -f /tmp/tw_target.urdf
 
 # bridge the gz sensor/odom/clock topics to ROS2 (rviz + tf broadcaster).
 # Sensor topics are not model-scoped, so the drone's camera/lidar publish at

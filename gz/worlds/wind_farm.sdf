@@ -1,13 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  PX4 SITL wind-farm inspection world.
+  PX4 SITL wind-farm inspection world (base template).
   Based on PX4 Tools/simulation/gz/worlds/default.sdf (v1.15): all system
   plugins, gravity, magnetic_field, atmosphere and the Dübendorf GPS origin
   (spherical_coordinates) are kept unchanged so the world matches PX4's
-  expected environment. Four static NREL-5MW wind turbines are placed with the
-  same grid formula as urdf/farm.xacro (x0=0, y0=0, scale=200, nx=ny=2):
-    (0,0)  (200,0)
-    (100,200) (300,200)
+  expected environment.
+
+  Turbines are NO longer included here as static <include>s.  Instead,
+  scripts/generate_world.py reads config/wind_farm.yaml, generates per-turbine
+  URDFs via farm.xacro, converts them to SDF, and embeds them as dynamic
+  models (with joints + blade animation) into a copy of this file.
   A mild wind (3 m/s +x) models the wind-farm environment.
 -->
 <sdf version="1.9">
@@ -223,24 +225,8 @@
       <pose>0 0 0 0 -0 0</pose>
       <self_collide>false</self_collide>
     </model>
-    <!-- Decoration turbines: static models loaded at world start.
-         The target turbine (1_1 at origin) is NOT included here — it is
-         spawned dynamically with blade animation after PX4 SITL starts. -->
-    <include>
-      <uri>model://wind_turbine</uri>
-      <name>wind_turbine_2_1</name>
-      <pose>200 0 0 0 0 0</pose>
-    </include>
-    <include>
-      <uri>model://wind_turbine</uri>
-      <name>wind_turbine_1_2</name>
-      <pose>100 200 0 0 0 0</pose>
-    </include>
-    <include>
-      <uri>model://wind_turbine</uri>
-      <name>wind_turbine_2_2</name>
-      <pose>300 200 0 0 0 0</pose>
-    </include>
+    <!-- All turbines are now generated dynamically by scripts/generate_world.py
+         and embedded in this world at bringup time.  No static <include>s here. -->
     <light name="sunUTC" type="directional">
       <pose>0 0 500 0 -0 0</pose>
       <cast_shadows>true</cast_shadows>

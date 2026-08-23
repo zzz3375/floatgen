@@ -50,6 +50,9 @@ __pycache__/
 ehthumbs.db
 Thumbs.db
 
+# Auto-generated world SDF (produced by scripts/generate_world.py at bringup)
+gz/worlds/wind_farm_dynamic.sdf
+
 # TEX files #
 ######################
 *~

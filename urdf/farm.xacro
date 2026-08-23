@@ -12,6 +12,7 @@
 <xacro:arg name="nacelle_yaw" default="0"/>
 <xacro:arg name="blade_pitch" default="0"/>
 <xacro:arg name="hub_position" default="0"/>
+<xacro:arg name="turbine_name" default=""/>
 
 <xacro:include filename="turbine.xacro"/>
 
@@ -21,9 +22,9 @@
 
 <xacro:macro name="col" params="nx ny">
     
-    <xacro:if value="${ny}">            
+    <xacro:if value="${ny}">
     <xacro:turbine
-        name="turbine_${nx}_${ny}"
+        name="${'$(arg turbine_name)' if '$(arg turbine_name)' else 'turbine_%d_%d' % (nx, ny)}"
         x="${x0 + (nx-1 + .5*(1-ny%2))*scale}"
         y="${y0 + (ny-1)*scale}"
         yaw="$(arg yaw)"

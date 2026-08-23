@@ -282,12 +282,12 @@ class WindFarmSimulator(Node):
         elif self.state == 'FLY':
             # If PX4 dropped out of offboard mode (watchdog timeout), try to
             # re-enter before the drone drifts too far.
-            # if self.status.nav_state != NAVIGATION_STATE_OFFBOARD:
-            #     self.get_logger().warn(
-            #         f'lost offboard (nav_state={self.status.nav_state}), '
-            #         f'requesting again')
-            #     self.send_command(CMD_DO_SET_MODE, param1=1.0,
-            #                       param2=PX4_CUSTOM_MAIN_MODE_OFFBOARD)
+            if self.status.nav_state != NAVIGATION_STATE_OFFBOARD:
+                self.get_logger().warn(
+                    f'lost offboard (nav_state={self.status.nav_state}), '
+                    f'requesting again')
+                self.send_command(CMD_DO_SET_MODE, param1=1.0,
+                                  param2=PX4_CUSTOM_MAIN_MODE_OFFBOARD)
             #  zzz3375: 这个强制转offboard不需要，去除掉
             self.publish_offboard_mode()
             self.publish_setpoint(self.target)
@@ -328,14 +328,18 @@ class WindFarmSimulator(Node):
             # PX4 auto-disarms after a landed touchdown, and the local
             # altitude reference can drift a couple of metres, so accept
             # either a disarmed state or a near-home altitude.
-            landed = (self.status.arming_state == ARMING_STATE_DISARMED
-                      or pos[2] > -1.0)
-            if landed and self.elapsed() > 5.0:
-                self.log_state('LANDED -> DISARM')
-                if self.status.arming_state == ARMING_STATE_ARMED:
-                    self.send_command(CMD_COMPONENT_ARM_DISARM, param1=0.0)
+            if self.status.arming_state == ARMING_STATE_DISARMED:
+                # PX4 already auto-disarmed on touchdown — do NOT send
+                # another disarm command (it can trigger a re-arm).
+                self.log_state('LANDED (PX4 auto-disarmed)')
                 self.state = 'DONE'
                 self.state_since = now
+            # elif pos[2] > -1.0 and self.elapsed() > 5.0:
+            #     # Altitude near home but still armed — send explicit disarm.
+            #     self.log_state('LANDED -> DISARM')
+            #     self.send_command(CMD_COMPONENT_ARM_DISARM, param1=0.0)
+            #     self.state = 'DONE'
+            #     self.state_since = now
 
         elif self.state == 'DONE':
             self.get_logger().info('mission finished')

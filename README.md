@@ -23,12 +23,14 @@ gz/
 ├── models/x500_mid360/           # drone model (symlinked into PX4)
 │   ├── model.config
 │   └── model.sdf                 # x500 + camera + lidar + odom publisher
-└── worlds/wind_farm.sdf          # PX4 world (default.sdf template + 4 turbines + wind)
+└── worlds/wind_farm.sdf          # PX4 基础世界模板（不含风机，由 generate_world.py 填充）
+    worlds/wind_farm_dynamic.sdf  # 动态生成：含 4 台带关节风机（bringup 自动软链进 PX4）
 config/
 ├── wind_farm.yaml                # single source of truth: layout, GPS origin, drone home, orbit
 └── rviz/wind_farm.rviz           # RViz2 config (PointCloud2 /mid360/points, Image /camera, TF)
 scripts/
 ├── wind_farm_bringup.sh          # one-shot: agent + PX4 SITL + bridges + RViz + planner
+├── generate_world.py             # 读取 YAML 配置，生成含全部动态风机的世界 SDF
 ├── wind_farm_planner.py          # ROS2 offboard inspection planner
 └── gz_tf_broadcaster.py          # TF: world -> drone -> sensor frames (from gz odometry)
 ```
@@ -158,12 +160,28 @@ source install/setup.bash
 
 ### 5. 世界文件与风电机组模型
 
-本项目约定：`gz/worlds/wind_farm.sdf` 与 `gz/models/wind_turbine` 软链进
+本项目约定：`gz/worlds/` 下的 SDF 与 `gz/models/wind_turbine` 软链进
 PX4（PX4 启动 gz 时从自己的 `Tools/simulation/gz/{worlds,models}` 找资源）：
 
 ```bash
+# 静态基础世界（模板，不含风机）
 ln -sfn ~/ros2_ws/src/floatgen/gz/worlds/wind_farm.sdf  ~/PX4-Autopilot/Tools/simulation/gz/worlds/wind_farm.sdf
+# 静态风机模型（mesh 资源，供 model:// URI 引用）
 ln -sfn ~/ros2_ws/src/floatgen/gz/models/wind_turbine   ~/PX4-Autopilot/Tools/simulation/gz/models/wind_turbine
+```
+
+动态世界（含全部风机）由 `scripts/generate_world.py` 在 bringup 时自动生成
+到 `gz/worlds/wind_farm_dynamic.sdf`，bringup 脚本会自动软链进 PX4。
+若需手动预生成：
+
+```bash
+source /opt/ros/humble/setup.bash && source ~/ros2_ws/install/setup.bash
+export FLOATGEN_SRC=~/ros2_ws/src/floatgen
+python3 ~/ros2_ws/src/floatgen/scripts/generate_world.py \
+    --config ~/ros2_ws/src/floatgen/config/wind_farm.yaml \
+    --output ~/ros2_ws/src/floatgen/gz/worlds/wind_farm_dynamic.sdf
+ln -sfn ~/ros2_ws/src/floatgen/gz/worlds/wind_farm_dynamic.sdf \
+        ~/PX4-Autopilot/Tools/simulation/gz/worlds/wind_farm_dynamic.sdf
 ```
 
 ### 6. 启动
@@ -176,8 +194,8 @@ bash src/floatgen/scripts/wind_farm_bringup.sh          # 带 GUI（gz + RViz）
 bash src/floatgen/scripts/wind_farm_bringup.sh HEADLESS # 无 GUI（gz 与 RViz 均不开）
 ```
 
-脚本按顺序拉起：MicroXRCEAgent → PX4 SITL（`gz_x500_mid360`，
-world=wind_farm，spawn=-80,-25,0.5）→ 6 条 gz↔ROS2 桥 → TF 广播 + RViz →
+脚本按顺序拉起：生成动态世界 SDF → MicroXRCEAgent → PX4 SITL（`gz_x500_mid360`，
+world=wind_farm_dynamic，spawn=-80,-25,0.5）→ 6 条 gz↔ROS2 桥 → TF 广播 + RViz →
 巡检规划器。任务结束后自动清理全部进程。
 
 ## One-shot bringup
@@ -189,7 +207,7 @@ source install/setup.bash
 bash src/floatgen/scripts/wind_farm_bringup.sh HEADLESS
 ```
 
-Starts MicroXRCEAgent → PX4 SITL (`PX4_GZ_WORLD=wind_farm`,
+Starts generate_world.py → MicroXRCEAgent → PX4 SITL (`PX4_GZ_WORLD=wind_farm_dynamic`,
 `PX4_GZ_MODEL_POSE=-80,-25,0.5,0,0,0`, headless) → gz↔ROS2 bridges →
 TF broadcaster + RViz → planner. The planner arms (retrying until the EKF
 health checks pass), enters offboard, orbits the first turbine (12 waypoints,

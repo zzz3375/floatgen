@@ -22,25 +22,27 @@ gps_origin:
   longitude: 8.546163739800146
   elevation: 0.0
 
+# Global defaults inherited by every turbine unless overridden per-turbine.
+turbine_defaults:
+  velocity: -0.0        # rad/s; 0 = blades locked, <0 = spinning
+  nacelle_yaw: 0.0      # rad, preset yaw angle of the nacelle
+  blade_pitch: 0.0      # rad, preset pitch angle of the blades
+  hub_position: 0.0     # rad, preset rotor hub position (when velocity == 0)
+
 turbines:
   - name: wind_turbine_1_1
+    velocity: -2.0
     x: 0.0
     y: 0.0
   - name: wind_turbine_2_1
-    x: 200.0
+    x: 150.0
     y: 0.0
   - name: wind_turbine_1_2
-    x: 100.0
-    y: 200.0
+    x: 50.0
+    y: 150.0
   - name: wind_turbine_2_2
-    x: 300.0
-    y: 200.0
-
-# Turbine blade rotation speed (rad/s).
-#   0      → blades locked (stopped turbine, useful for static inspection)
-#   -2.0   → blades spinning (matches farm_launch.py default for visual realism)
-# Passed to the xacro via farm_launch.py when spawning turbines in bringup.
-turbine_velocity: -2.0
+    x: 200.0
+    y: 150.0
 
 inspection:
   # Orbit the first turbine (wind_turbine_1_1 at the farm origin).
