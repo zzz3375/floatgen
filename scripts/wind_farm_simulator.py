@@ -40,7 +40,6 @@ import sys
 import time
 
 import rclpy
-from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
@@ -86,9 +85,6 @@ class WindFarmSimulator(Node):
 
         self.qos = QoSProfile(depth=5, reliability=ReliabilityPolicy.BEST_EFFORT,
                               history=HistoryPolicy.KEEP_LAST)
-        # Reentrant group: lets the high-rate setpoint timer fire even while
-        # the state machine or a subscription callback is being processed.
-        self.reentrant = ReentrantCallbackGroup()
 
         self.offboard_pub = self.create_publisher(OffboardControlMode,
                                                   '/fmu/in/offboard_control_mode', 10)
@@ -98,11 +94,9 @@ class WindFarmSimulator(Node):
                                                  '/fmu/in/vehicle_command', 10)
 
         self.create_subscription(VehicleStatus, '/fmu/out/vehicle_status',
-                                 self.status_cb, self.qos,
-                                 callback_group=self.reentrant)
+                                 self.status_cb, self.qos)
         self.create_subscription(VehicleLocalPosition, '/fmu/out/vehicle_local_position',
-                                 self.local_pos_cb, self.qos,
-                                 callback_group=self.reentrant)
+                                 self.local_pos_cb, self.qos)
 
         self.status = None
         self.local_pos = None
@@ -148,17 +142,7 @@ class WindFarmSimulator(Node):
         self.finished = False
         self.last_arm_send = 0.0       # monotonic time of the last ARM command
 
-        # PX4 drops out of offboard mode if no setpoint arrives within
-        # COM_OF_LOSS_T (default 0.5 s), and engaging offboard requires a
-        # steady pre-arm stream (>= 2 Hz). Stream setpoints on a dedicated
-        # high-rate timer, decoupled from the slower state machine.
-        self.setpoint_rate = float(insp.get('setpoint_rate', 50.0))
-        self.stream_timer = self.create_timer(1.0 / self.setpoint_rate,
-                                              self.stream_setpoints,
-                                              callback_group=self.reentrant)
-        self.state_timer = self.create_timer(0.1, self.control_loop,  # 10 Hz
-                                             callback_group=self.reentrant)
-        self.get_logger().info(f'offboard setpoint rate: {self.setpoint_rate:.0f} Hz')
+        self.timer = self.create_timer(0.05, self.control_loop)  # 20 Hz
 
     # -- subscriptions ------------------------------------------------------
     def status_cb(self, msg):
@@ -191,15 +175,6 @@ class WindFarmSimulator(Node):
         msg.velocity = [float('nan')] * 3
         msg.yawspeed = 0.0
         self.setpoint_pub.publish(msg)
-
-    def stream_setpoints(self):
-        # High-rate offboard stream; the state machine only updates
-        # ``self.target``. Streaming stops in RTL/LAND so PX4 keeps its
-        # failsafe/landing modes.
-        if self.target is None or self.state in ('RTL', 'LAND', 'DONE'):
-            return
-        self.publish_offboard_mode()
-        self.publish_setpoint(self.target)
 
     def send_command(self, command, param1=0.0, param2=0.0):
         msg = VehicleCommand()
@@ -240,6 +215,8 @@ class WindFarmSimulator(Node):
         if self.state == 'STREAM':
             # send a hover setpoint at the current position for the pre-arm phase
             self.target = (pos[0], pos[1], min(pos[2] - 0.5, -0.5))
+            self.publish_offboard_mode()
+            self.publish_setpoint(self.target)
             if self.elapsed() > 2.0:
                 self.send_command(CMD_COMPONENT_ARM_DISARM, param1=1.0)
                 self.log_state('ARM (command sent)')
@@ -248,6 +225,8 @@ class WindFarmSimulator(Node):
                 self.last_arm_send = now
 
         elif self.state == 'ARM':
+            self.publish_offboard_mode()
+            self.publish_setpoint(self.target)
             if self.status.arming_state == ARMING_STATE_ARMED:
                 self.log_state('ARMED -> OFFBOARD (command sent)')
                 self.send_command(CMD_DO_SET_MODE, param1=1.0,
@@ -266,6 +245,8 @@ class WindFarmSimulator(Node):
                 self.get_logger().info('ARM (retry, waiting for health checks)')
 
         elif self.state == 'OFFBOARD':
+            self.publish_offboard_mode()
+            self.publish_setpoint(self.target)
             if self.status.nav_state == NAVIGATION_STATE_OFFBOARD:
                 self.log_state('OFFBOARD active, climbing to altitude')
                 self.takeoff_pos = (pos[0], pos[1])
@@ -278,6 +259,8 @@ class WindFarmSimulator(Node):
                 self.state_since = now
 
         elif self.state == 'TAKEOFF':
+            self.publish_offboard_mode()
+            self.publish_setpoint(self.target)
             if abs(pos[2] - self.target[2]) < 1.5:
                 # reorder orbit so the first waypoint is nearest to the
                 # drone's current hover position
@@ -306,6 +289,8 @@ class WindFarmSimulator(Node):
                 self.send_command(CMD_DO_SET_MODE, param1=1.0,
                                   param2=PX4_CUSTOM_MAIN_MODE_OFFBOARD)
             #  zzz3375: 这个强制转offboard不需要，去除掉
+            self.publish_offboard_mode()
+            self.publish_setpoint(self.target)
             dx = pos[0] - self.target[0]
             dy = pos[1] - self.target[1]
             dz = pos[2] - self.target[2]
@@ -358,8 +343,7 @@ class WindFarmSimulator(Node):
 
         if self.state == 'DONE':
             self.get_logger().info('mission finished')
-            self.stream_timer.cancel()
-            self.state_timer.cancel()
+            self.timer.cancel()
             self.finished = True
 
 
@@ -368,16 +352,11 @@ def main(args=None):
     config = sys.argv[1] if len(sys.argv) > 1 else \
         '/home/zzz2204/ros2_ws/src/floatgen/config/wind_farm.yaml'
     node = WindFarmSimulator(config)
-    # MultiThreadedExecutor keeps the high-rate setpoint timer firing on
-    # schedule even while subscription callbacks are being processed.
-    executor = rclpy.executors.MultiThreadedExecutor()
-    executor.add_node(node)
     try:
         while rclpy.ok() and not node.finished:
-            executor.spin_once(timeout_sec=0.1)
+            rclpy.spin_once(node, timeout_sec=0.1)
     except KeyboardInterrupt:
         pass
-    executor.shutdown()
     node.destroy_node()
     rclpy.shutdown()
 
