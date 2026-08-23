@@ -24,10 +24,10 @@ gps_origin:
 
 # Global defaults inherited by every turbine unless overridden per-turbine.
 turbine_defaults:
-  velocity: -0.0        # rad/s; 0 = blades locked, <0 = spinning
+  velocity: 0        # rad/s; 0 = blades locked, <0 = spinning
   nacelle_yaw: 0.0      # rad, preset yaw angle of the nacelle
   blade_pitch: 0.0      # rad, preset pitch angle of the blades
-  hub_position: 0.0     # rad, preset rotor hub position (when velocity == 0)
+  hub_position: 1.57     # rad, preset rotor hub position (when velocity == 0)
 
 turbines:
   - name: wind_turbine_1_1
